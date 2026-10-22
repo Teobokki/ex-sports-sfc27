@@ -5,7 +5,7 @@ import os, sys, json, time, math, random, threading, tempfile, urllib.request, s
 APP_NAME = "EX SPORTS SFC 27"
 APP_TITLE = "EX SPORTS\u2122 SFC 27"
 EDITION = "STANDARD EDITION"
-APP_VERSION = "1.0.0.2"
+APP_VERSION = "1.0.0.3"
 REPO = "Teobokki/ex-sports-sfc27"
 UPDATE_URL = "https://raw.githubusercontent.com/%s/main/latest.json" % REPO
 RELEASES_URL = "https://github.com/%s/releases/latest" % REPO
@@ -268,6 +268,7 @@ class App(ShowBase):
         self.cur_music = None
         self.tex_title = self.loader.load_texture(Filename.from_os_specific(Aj("title.jpg")))
         self.world = World(self); self.world.build()
+        self._build_menu_bg()
         self.game = Game(self); F.add_signs(self.game)
         self.screen = None; self.pause_ui = None; self.dialog = None; self._upd = None; self.t = 0.0
         self.held = set()
@@ -328,6 +329,51 @@ class App(ShowBase):
 
     def _on_window_event(self, win):
         if win is self.win and win is not None and not win.get_properties().get_open(): self.userExit()
+        if win is self.win: self._layout_menu_bg()
+
+    # ------------------------------------------------------------ v1.0.0.3 main-menu background photo (cover-scaled, never stretched)
+    MENU_BG_FOCUS = (0.60, 0.50)          # crop centre (fraction of the image from the left / top): her face and the ball stay in view,
+                                          # left of the button column, from 4:3 to 21:9
+
+    def _build_menu_bg(self):
+        self.menu_bg = None; self.menu_bg_aspect = 16 / 9.0
+        try:
+            tex = self.loader.load_texture(Filename.from_os_specific(os.path.join(BASE, "assets", "menu_bg.jpg")))
+            tex.set_minfilter(SamplerState.FT_linear_mipmap_linear); tex.set_magfilter(SamplerState.FT_linear)
+            tex.set_wrap_u(SamplerState.WM_clamp); tex.set_wrap_v(SamplerState.WM_clamp)
+            self.menu_bg_aspect = tex.get_orig_file_x_size() / float(max(1, tex.get_orig_file_y_size()))
+            bg = self.menu_bg = OnscreenImage(image=tex, parent=self.render2d)
+            bg.set_bin("background", 0); bg.set_depth_write(False); bg.set_depth_test(False); bg.hide()
+        except Exception as e:
+            log_error(e); self.menu_bg = None
+        self._layout_menu_bg()
+
+    def _layout_menu_bg(self):
+        bg = getattr(self, "menu_bg", None)
+        if bg is None or self.win is None: return
+        w, h = max(1, self.win.get_x_size()), max(1, self.win.get_y_size()); sa = w / float(h); ia = self.menu_bg_aspect
+        if sa >= ia: sx, sz = 1.0, sa / ia          # wider window: fill the width, crop top / bottom
+        else: sx, sz = ia / sa, 1.0                 # narrower window: fill the height, crop the sides
+        fx, fy = self.MENU_BG_FOCUS
+        px = max(-(sx - 1), min(sx - 1, (1 - 2 * fx) * sx)); pz = max(-(sz - 1), min(sz - 1, (2 * fy - 1) * sz))
+        bg.set_scale(sx, 1, sz); bg.set_pos(px, 0, pz)
+
+    def _menu_column(self, o):
+        """right-hand column with a soft dark gradient (transparent -> dark) so the buttons read over the photo; no glow"""
+        if self.menu_bg is not None: self.menu_bg.show()
+        if getattr(self, "_grad_tex", None) is None:
+            img = PNMImage(256, 1, 4)
+            for x in range(256):
+                t = x / 255.0; a = 0.78 * min(1.0, (t / 0.55)) ** 1.6
+                img.set_xel_a(x, 0, 0.0, 0.0, 0.02, a)
+            self._grad_tex = Texture("menu-grad"); self._grad_tex.load(img)
+            self._grad_tex.set_wrap_u(SamplerState.WM_clamp); self._grad_tex.set_minfilter(SamplerState.FT_linear); self._grad_tex.set_magfilter(SamplerState.FT_linear)
+        r = float(self.a2dRight); cx = r - 0.56
+        g = OnscreenImage(image=self._grad_tex, parent=o, pos=(r - 0.7, 0, 0), scale=(0.7, 1, 1.2)); g.set_transparency(TransparencyAttrib.M_alpha)
+        col = DirectFrame(parent=o, frameColor=(0, 0, 0, 0), pos=(cx, 0, 0), state=DGG.DISABLED)
+        bar = DirectFrame(parent=o, frameColor=(0.75, 0.04, 0.1, 1), frameSize=(-0.004, 0.004, -0.9, 0.9), pos=(r - 1.06, 0, 0), state=DGG.DISABLED)
+        bar.set_color_scale(1, 1, 1, 0.4); bar.set_transparency(TransparencyAttrib.M_alpha)
+        return col
 
     def _frame(self, task):
         dt = min(globalClock.get_dt(), 0.1); self.t += dt
@@ -368,6 +414,7 @@ class App(ShowBase):
 
     # ------------------------------------------------------------ screens
     def clear_screen(self):
+        if getattr(self, "menu_bg", None) is not None: self.menu_bg.hide()
         if getattr(self, "_scr", None) is not None: self._scr.destroy()
         self._scr = None; self.screen = None
         self.game.online.close()
@@ -410,7 +457,10 @@ class App(ShowBase):
         it = self.intro
         if it is None: return task.done
         now = time.time()
-        if it["t0"] is None: it["t0"] = now                 # start counting on the first drawn frame
+        if it["t0"] is None:                                # start counting once 2 black frames are drawn (texture uploads done)
+            it["warm"] = it.get("warm", 0) + 1
+            if it["warm"] <= 2: return task.cont
+            it["t0"] = now
         e = now - it["t0"]
         ease = lambda x: 1 - (1 - max(0.0, min(1.0, x))) ** 3
         # timeline (s): 0.2-1.2 logo in | 1.2-5.2 hold, slow scale | 5.2-6.0 fade out to the title screen
@@ -448,18 +498,17 @@ class App(ShowBase):
         self._end_intro(time.time() - (it["t0"] or time.time()), skipped=True)
 
     def show_title(self, music=True):
-        o = self._frame_ui("title", 0.25)
+        o = self._frame_ui("title", 0.0 if self.menu_bg is not None else 0.25)
         if music: self.play_music("music_menu")
-        img = OnscreenImage(image=self.tex_title, parent=o, pos=(-0.62, 0, 0.04), scale=(0.78, 1, 0.78))
-        U.panel(o, -1.42, 0.18, -0.76, 0.84, col=(0, 0, 0, 0), edge=(1, 0.84, 0.08, 1)); img.reparent_to(o)
-        self._title_block(o, 0.85, 0.32)
-        U.button(o, "PRESS PLAY", (0.85, -0.12), self.show_menu, w=0.3, h=0.07, scale=0.06, hint="Enter")
-        self._footer(o)
+        col = self._menu_column(o)
+        self._title_block(col, 0, 0.3, 0.72)
+        U.button(col, "PRESS PLAY", (0, -0.12), self.show_menu, w=0.3, h=0.065, scale=0.055, hint="Enter")
+        self._footer(col)
 
     def show_menu(self):
-        self.hide_pause(); o = self._frame_ui("menu", 0.35); self.play_music("music_menu")
-        img = OnscreenImage(image=self.tex_title, parent=o, pos=(-0.85, 0, 0.0), scale=(0.55, 1, 0.55))
-        self._title_block(o, 0.55, 0.66, 0.8)
+        self.hide_pause(); o = self._frame_ui("menu", 0.0 if self.menu_bg is not None else 0.35); self.play_music("music_menu")
+        col = self._menu_column(o)
+        self._title_block(col, 0, 0.7, 0.62)
         d = self.settings["duration"]
         items = [("KICK OFF", lambda: self.game.quick_match()), ("SFC 27 ARENA", self.arena.show_hub),
                  ("ONLINE", lambda: (self.clear_screen(), self.game.online.open())),
@@ -467,12 +516,12 @@ class App(ShowBase):
                  ("QUIT", self.userExit)]
         self.menu_labels = [t for t, _ in items]
         for i, (t, fn) in enumerate(items):
-            U.button(o, t, (0.55, 0.44 - i * 0.105), fn, w=0.36, h=0.042, scale=0.04,
+            U.button(col, t, (0, 0.46 - i * 0.105), fn, w=0.36, h=0.042, scale=0.04,
                      edge=(0.3, 1.0, 0.45, 1) if i == 0 else (1, 0.35, 0.3, 1) if t == "QUIT" else U.PINK)
         c0, c1 = self.club_name(self.settings["home"]), self.club_name(self.settings["away"])
-        U.text(o, "%s%s  vs  %s   -   %s" % (c0, " (YELLOW KIT)" if self.settings.get("home_kit") == "yellow" else "", c1, "UNLIMITED" if not d else "%d MIN" % d),
-               (0.55, -0.56), 0.028, fg=(1, 1, 1, 0.9), font=U.FONT_PLAIN, shadow=(0, 0, 0, 1))
-        self._footer(o)
+        U.text(col, "%s%s  vs  %s   -   %s" % (c0, " (YELLOW KIT)" if self.settings.get("home_kit") == "yellow" else "", c1, "UNLIMITED" if not d else "%d MIN" % d),
+               (0, -0.42), 0.024, fg=(1, 1, 1, 0.9), font=U.FONT_PLAIN, shadow=(0, 0, 0, 1), wrap=34)
+        self._footer(col)
 
     def show_recordings(self, page=0):
         import xs_recorder as XR

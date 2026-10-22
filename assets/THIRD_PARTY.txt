@@ -9,3 +9,4 @@ EX SPORTS RECORDER uses FFmpeg (https://ffmpeg.org), a separate program in the f
 shipped by imageio-ffmpeg 7.1, built with libx264. FFmpeg is licensed under the GNU GPL v3 (as built). Source: https://ffmpeg.org/download.html
 Intro voiceover: Piper TTS (MIT, github.com/rhasspy/piper), en_GB "vctk" medium voice, speaker p243, trained on the
 CSTR VCTK Corpus (University of Edinburgh, CC BY 4.0, https://datashare.ed.ac.uk/handle/10283/3443). Rendered offline at build time.
+Main-menu artwork (assets/menu_bg.jpg): supplied by EX Inc. for EX SPORTS SFC 27.

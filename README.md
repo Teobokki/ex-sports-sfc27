@@ -10,6 +10,9 @@ Get the latest build from the [Releases](https://github.com/Teobokki/ex-sports-s
 
 The game checks for updates itself (menu > CHECK FOR UPDATES), using `latest.json` in this repo.
 
+## 1.0.0.3: new main-menu background
+- The title screen and main menu show the new SFC 27 artwork, cover-scaled (never stretched), with the buttons in a right-hand column over a subtle dark gradient.
+
 ## 1.0.0.2: intro, SFC 27 ARENA, EX SPORTS RECORDER
 - **Intro**: a 6-second EX SPORTS logo intro plays on every launch, with an original sting and an en-GB voiceover: "EX SPORTS. IT'S IN THE FAME." Press Esc, Enter or Space, or click, to skip.
 - **SFC 27 ARENA**:
