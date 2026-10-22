@@ -1,4 +1,4 @@
-#define MyVer "1.0.0"
+#define MyVer "1.0.0.1"
 [Setup]
 AppId={{B3C5E2A1-7D4F-4E61-9A27-5F0C8D2E1B27}
 AppName=EX SPORTS SFC 27 STANDARD EDITION
@@ -6,10 +6,10 @@ AppVersion={#MyVer}
 AppVerName=EX SPORTS SFC 27 STANDARD EDITION {#MyVer}
 AppPublisher=EX Inc./HYPERION DIGITAL
 AppPublisherURL=https://github.com/Teobokki/ex-sports-sfc27
-AppCopyright=©2026 EX Inc./HYPERION DIGITAL ©2026
+AppCopyright=© 2026 EX SPORTS AND EX INC.
 VersionInfoVersion={#MyVer}
 VersionInfoCompany=EX Inc./HYPERION DIGITAL
-VersionInfoCopyright=©2026 EX Inc./HYPERION DIGITAL ©2026
+VersionInfoCopyright=© 2026 EX SPORTS AND EX INC.
 VersionInfoProductName=EX SPORTS SFC 27 STANDARD EDITION
 VersionInfoDescription=EX SPORTS SFC 27 STANDARD EDITION Setup
 DefaultDirName={localappdata}\Programs\EX SPORTS SFC 27
@@ -25,7 +25,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-CloseApplications=yes
+CloseApplications=force
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

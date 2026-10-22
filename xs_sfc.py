@@ -2,7 +2,7 @@
 
   * the EX SPORTS SFC 27 STADIUM: a full-size 105 x 68 m pitch with the standard markings, goals with nets, four stands
     with a crowd, roofs and plain floodlight masts (no glow)
-  * 7-a-side matches: QUICK MATCH vs AI, or ONLINE (join code) with friends + AI fill
+  * 7-a-side matches: KICK OFF vs AI, or ONLINE (join code) with friends + AI fill
   * pass / shoot / tackle / sprint, kickoff, goals, scoreboard, clock (UNLIMITED by default), END MATCH
 Fictional clubs only."""
 import math, random, time

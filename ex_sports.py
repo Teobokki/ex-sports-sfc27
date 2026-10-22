@@ -1,15 +1,15 @@
-"""EX SPORTS(TM) SFC 27 STANDARD EDITION - 7-a-side football at the SFC 27 stadium. QUICK MATCH vs AI or ONLINE with friends.
-(c)2026 EX Inc./HYPERION DIGITAL (c)2026"""
+"""EX SPORTS(TM) SFC 27 STANDARD EDITION - 7-a-side football at the SFC 27 stadium. KICK OFF (vs AI) or ONLINE with friends.
+(c) 2026 EX SPORTS AND EX INC."""
 import os, sys, json, time, math, random, threading, tempfile, urllib.request, shutil, traceback, webbrowser
 
 APP_NAME = "EX SPORTS SFC 27"
 APP_TITLE = "EX SPORTS\u2122 SFC 27"
 EDITION = "STANDARD EDITION"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.0.1"
 REPO = "Teobokki/ex-sports-sfc27"
 UPDATE_URL = "https://raw.githubusercontent.com/%s/main/latest.json" % REPO
 RELEASES_URL = "https://github.com/%s/releases/latest" % REPO
-COPYRIGHT = "\u00a92026 EX Inc./HYPERION DIGITAL \u00a92026"
+COPYRIGHT = "\u00a9 2026 EX SPORTS AND EX INC."
 
 BASE = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 if os.environ.get("EXS_DATA_DIR"): DATA = os.environ["EXS_DATA_DIR"]
@@ -60,6 +60,19 @@ def vtuple(v):
     for p in str(v).strip().lstrip("vV").split("."):
         n = "".join(ch for ch in p if ch.isdigit()); out.append(int(n) if n else 0)
     return tuple(out + [0] * (4 - len(out)))
+
+
+def clean_env():
+    """Environment for processes we start (Setup, portable swap helper/relaunch). A PyInstaller onefile parent exports
+    _PYI_* / _MEIPASS2; a relaunched copy that inherits them reuses the old _MEI folder (old code keeps running and
+    Windows shows 'Failed to remove temporary directory'). Strip them and ask the child bootloader to start fresh."""
+    env = {k: v for k, v in os.environ.items() if not (k.upper().startswith("_PYI") or k.upper().startswith("_MEIPASS")
+                                                        or k.upper() in ("TCL_LIBRARY", "TK_LIBRARY"))}
+    mei = getattr(sys, "_MEIPASS", None)
+    if mei and "PATH" in env:
+        env["PATH"] = os.pathsep.join(x for x in env["PATH"].split(os.pathsep) if not os.path.normcase(x).startswith(os.path.normcase(mei)))
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
 
 
 def is_portable():
@@ -360,7 +373,7 @@ class App(ShowBase):
         img = OnscreenImage(image=self.tex_title, parent=o, pos=(-0.85, 0, 0.0), scale=(0.55, 1, 0.55))
         self._title_block(o, 0.55, 0.66, 0.8)
         d = self.settings["duration"]
-        items = [("QUICK MATCH VS AI", lambda: self.game.quick_match()), ("ONLINE", lambda: (self.clear_screen(), self.game.online.open())),
+        items = [("KICK OFF", lambda: self.game.quick_match()), ("ONLINE", lambda: (self.clear_screen(), self.game.online.open())),
                  ("TEAMS", self.show_teams), ("SETTINGS", self.show_settings), ("CHECK FOR UPDATES", self.check_updates), ("QUIT", self.userExit)]
         for i, (t, fn) in enumerate(items):
             U.button(o, t, (0.55, 0.38 - i * 0.13), fn, w=0.36, h=0.05, scale=0.045,
@@ -508,8 +521,10 @@ class App(ShowBase):
 
     def _download(self, data):
         link = data["link"]
-        if data.get("portable") or not link.lower().endswith(".exe"):
+        if not link.lower().endswith(".exe"):
             webbrowser.open(data.get("page") or RELEASES_URL); self._close_dialog(); return
+        if data.get("portable"):
+            return self._download_portable(link)
         self._dialog("Downloading the update...", [])
         def work():
             try:
@@ -526,11 +541,66 @@ class App(ShowBase):
         if r is None: return task.cont
         self._upd = None
         if r[0] == "install":
-            try: os.startfile(r[1]); self.userExit()
+            try:
+                import subprocess, shlex
+                extra = shlex.split(os.environ.get("EXS_UPDATE_SETUP_ARGS", ""))   # test hook, e.g. /VERYSILENT
+                subprocess.Popen([r[1]] + extra, env=clean_env(), cwd=tempfile.gettempdir(), close_fds=True,
+                                 creationflags=0x00000008 | 0x00000200 if os.name == "nt" else 0)   # detached, outside _MEI
+                self.userExit()
             except Exception as e: self._dialog("Could not start the installer:\n%s" % e, [("CLOSE", self._close_dialog)])
         else:
             self._dialog("Download failed.\n%s" % r[1], [("OPEN DOWNLOAD PAGE", lambda: webbrowser.open(RELEASES_URL)), ("CLOSE", self._close_dialog)])
         return task.done
+
+    def _download_portable(self, link):
+        exe = os.path.abspath(sys.executable); new = exe + ".new"
+        self._dialog("Downloading the portable update...", [])
+        def work():
+            try:
+                req = urllib.request.Request(link, headers={"User-Agent": "EX-SPORTS-SFC27/" + APP_VERSION})
+                with urllib.request.urlopen(req, timeout=60) as r, open(new, "wb") as f: shutil.copyfileobj(r, f)
+                with open(new, "rb") as f: ok = f.read(2) == b"MZ"
+                if not ok or os.path.getsize(new) < 5_000_000:
+                    os.remove(new); raise IOError("downloaded file is not a valid EX SPORTS executable")
+                self._upd = ("swap", new)
+            except Exception as e:
+                try:
+                    if os.path.exists(new): os.remove(new)
+                except OSError: pass
+                self._upd = ("dlerror", str(e)[:90])
+        threading.Thread(target=work, daemon=True).start()
+        self.task_mgr.add(self._poll_portable, "poll-dl")
+
+    def _poll_portable(self, task):
+        r = self._upd
+        if r is None: return task.cont
+        self._upd = None
+        if r[0] == "swap":
+            try: self._launch_swap_helper(os.path.abspath(sys.executable), r[1]); self.userExit()
+            except Exception as e:
+                log_error("portable update: %r" % e)
+                self._dialog("Could not apply the update:\n%s" % str(e)[:90], [("OPEN DOWNLOAD PAGE", lambda: webbrowser.open(RELEASES_URL)), ("CLOSE", self._close_dialog)])
+        else:
+            self._dialog("Download failed.\n%s" % r[1], [("OPEN DOWNLOAD PAGE", lambda: webbrowser.open(RELEASES_URL)), ("CLOSE", self._close_dialog)])
+        return task.done
+
+    def _launch_swap_helper(self, exe, new):
+        """Wait for this process (and the onefile bootloader parent) to exit, replace the exe, relaunch it with a clean env."""
+        import subprocess
+        pids = [os.getpid()]
+        try: pids.append(os.getppid())
+        except Exception: pass
+        bat = os.path.join(tempfile.gettempdir(), "exsports_update_%d.bat" % os.getpid())
+        lines = ["@echo off", "setlocal EnableDelayedExpansion", "set N=0"]
+        for p in pids:
+            lines += [":w%d" % p, 'tasklist /FI "PID eq %d" 2>NUL | find " %d " >NUL' % (p, p),
+                      "if not errorlevel 1 (ping -n 2 127.0.0.1 >NUL & set /a N+=1 & if !N! LSS 120 goto w%d)" % p]
+        lines += ["set T=0", ":swap", 'move /Y "%s" "%s" >NUL 2>&1' % (new, exe),
+                  "if errorlevel 1 (ping -n 2 127.0.0.1 >NUL & set /a T+=1 & if !T! LSS 60 goto swap)",
+                  'start "" "%s"' % exe, '(goto) 2>NUL & del "%~f0"']
+        with open(bat, "w", encoding="mbcs" if os.name == "nt" else "utf-8") as f: f.write("\r\n".join(lines) + "\r\n")
+        subprocess.Popen(["cmd.exe", "/c", bat], creationflags=0x00000008 | 0x00000200, close_fds=True, cwd=os.path.dirname(exe),
+                         env=clean_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # ------------------------------------------------------------ release smoke test (works in the frozen exe)
     def _smoke(self, task):
