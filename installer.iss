@@ -1,4 +1,4 @@
-#define MyVer "1.0.0.3"
+#define MyVer "1.0.0.4"
 [Setup]
 AppId={{B3C5E2A1-7D4F-4E61-9A27-5F0C8D2E1B27}
 AppName=EX SPORTS SFC 27 STANDARD EDITION

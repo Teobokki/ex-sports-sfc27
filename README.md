@@ -10,6 +10,12 @@ Get the latest build from the [Releases](https://github.com/Teobokki/ex-sports-s
 
 The game checks for updates itself (menu > CHECK FOR UPDATES), using `latest.json` in this repo.
 
+## 1.0.0.4: player faces in SFC 27 ARENA
+- Every ARENA card shows a head-and-shoulders portrait of that fictional player in his club's kit colours. This covers the starting XI and bench from your picked team, reserves, and pack cards.
+- Each face is unique and always the same for that player. Faces vary in skin tone, face shape, hair style and colour, facial hair, eye colour and age (18 to 36).
+- Portraits are rendered in the game's own engine, with plain lighting and no glow. They are cached per user in `%APPDATA%\EX SPORTS SFC 27\faces`.
+- PLAYER INFO shows a large portrait with number, position, age, rating, tier, club and stats. Open it by clicking a card on the ARENA hub or in a pack reveal, or by switching on PLAYER INFO in SQUAD.
+
 ## 1.0.0.3: new main-menu background
 - The title screen and main menu show the new SFC 27 artwork, cover-scaled (never stretched), with the buttons in a right-hand column over a subtle dark gradient.
 

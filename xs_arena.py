@@ -1,16 +1,18 @@
-"""EX SPORTS(TM) SFC 27 STANDARD EDITION - SFC 27 ARENA (v1.0.0.2): build a squad of player cards and play ARENA matches.
+"""EX SPORTS(TM) SFC 27 STANDARD EDITION - SFC 27 ARENA (v1.0.0.2, faces v1.0.0.4): build a squad of player cards and play ARENA matches.
 
   * PICK A TEAM from the KICK OFF club list: its name, kit colours and squad (as player cards) become your ARENA club
   * player cards: fictional players only (generated names), ratings, positions, tiers BRONZE / SILVER / GOLD / ELITE
   * squad: 11-a-side FORMATION, starting XI, captain, bench (subs), reserves and kit (HOME / AWAY / YELLOW)
   * packs bought with ARENA COINS earned by playing; ADD COINS tops them up for free. No real money, nothing to buy.
   * ARENA matches vs AI clubs on the SFC 27 pitch with your squad; coins on finish
+  * v1.0.0.4: every card shows a portrait of that fictional player in his club's kit (xs_faces: rendered in-engine, cached)
 Saved per user in %APPDATA%\\EX SPORTS SFC 27\\arena.json (no admin)."""
 import os, json, random, time
-from panda3d.core import TextNode
+from panda3d.core import TextNode, TransparencyAttrib
 from direct.gui.DirectGui import DirectFrame, DGG
 import xs_ui as U
 import xs_sfc as F
+import xs_faces
 
 TIERS = [("BRONZE", 50, 64), ("SILVER", 65, 74), ("GOLD", 75, 84), ("ELITE", 85, 94)]
 TIER_STYLE = {   # (card fill, edge, text) - flat colours, no glow
@@ -77,7 +79,8 @@ class Arena:
         base = getattr(app, "DATA", None) or os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "EX SPORTS SFC 27")
         self.path = os.path.join(base, "arena_smoke.json" if os.environ.get("EXS_SMOKE") else "arena.json")
         if os.environ.get("EXS_SMOKE") and os.path.exists(self.path): os.remove(self.path)   # the smoke test starts clean
-        self.d = self._load(); self.last_pack = []
+        self.d = self._load(); self.last_pack = []; self.info_mode = False
+        self.faces = xs_faces.FaceBank(app); self.faces.dir = os.path.join(base, "faces")
 
     # ---------------------------------------------------------------- save
     def _load(self):
@@ -254,25 +257,73 @@ class Arena:
         a._footer(o)
         return o
 
+    def portrait(self, parent, c, l, r, b, t, back=None):
+        """the player's portrait in a box (l, r, b, t); a plain shirt-number badge if portraits can't be rendered"""
+        if back is not None: DirectFrame(parent=parent, frameColor=back, frameSize=(l, r, b, t), state=DGG.DISABLED)
+        tex = self.faces.texture(c) if c else None
+        if tex is None:
+            U.text(parent, str(c.get("num", "")) if c else "", ((l + r) / 2, (b + t) / 2 - (t - b) * 0.15), (t - b) * 0.45, fg=(1, 1, 1, 0.5))
+            return None
+        f = DirectFrame(parent=parent, frameColor=(1, 1, 1, 1), frameTexture=tex, frameSize=(l, r, b, t), state=DGG.DISABLED)
+        f.set_transparency(TransparencyAttrib.M_alpha)
+        return f
+
     def draw_card(self, parent, c, pos, s=1.0, sel=False, captain=False, cmd=None):
-        """an original flat card: tier colours, rating, position, name, four stats. No glow."""
+        """an original flat card: tier colours, the player's portrait, rating, position, name, four stats. No glow."""
         fill, edge, fg = TIER_STYLE[c["tier"]]; w, h = 0.13 * s, 0.18 * s
         if sel: edge = (0.3, 1.0, 0.45, 1)
         o = U.button(parent, "", pos, cmd, w=w, h=h, col=fill, edge=edge, scale=0.01) if cmd else \
             DirectFrame(parent=parent, frameColor=edge, frameSize=(-w - 0.006, w + 0.006, -h - 0.006, h + 0.006), pos=(pos[0], 0, pos[1]))
         if not cmd: DirectFrame(parent=o, frameColor=fill, frameSize=(-w, w, -h, h), state=DGG.DISABLED)
-        DirectFrame(parent=o, frameColor=edge, frameSize=(-w, w, h * 0.5, h * 0.53), state=DGG.DISABLED)   # thin divider line
-        U.text(o, str(c["rating"]), (-w * 0.55, h * 0.62), 0.065 * s, fg=fg)
-        U.text(o, c["pos"], (-w * 0.55, h * 0.36), 0.032 * s, fg=fg, font=U.FONT_PLAIN)
-        U.text(o, c["tier"], (w * 0.45, h * 0.7), 0.022 * s, fg=fg, font=U.FONT_PLAIN)
-        if captain: U.text(o, "C", (w * 0.55, h * 0.36), 0.04 * s, fg=fg)
+        # portrait: upper right, standing on the divider; backed by a darker tint of the card
+        back = (fill[0] * 0.72, fill[1] * 0.72, fill[2] * 0.72, 1)
+        pw = 0.86 * h * 1.0
+        self.portrait(o, c, w * 0.97 - pw, w * 0.97, h * 0.06, h * 0.06 + pw, back=back)
+        DirectFrame(parent=o, frameColor=edge, frameSize=(-w, w, h * 0.03, h * 0.06), state=DGG.DISABLED)   # thin divider line
+        U.text(o, str(c["rating"]), (-w * 0.66, h * 0.7), 0.06 * s, fg=fg)
+        U.text(o, c["pos"], (-w * 0.66, h * 0.5), 0.03 * s, fg=fg, font=U.FONT_PLAIN)
+        U.text(o, c["tier"][:1], (-w * 0.66, h * 0.33), 0.022 * s, fg=fg, font=U.FONT_PLAIN)
+        if captain:
+            DirectFrame(parent=o, frameColor=(0.05, 0.05, 0.08, 0.9), frameSize=(-w * 0.86, -w * 0.46, h * 0.1, h * 0.27), state=DGG.DISABLED)
+            U.text(o, "C", (-w * 0.66, h * 0.135), 0.03 * s, fg=(1, 0.84, 0.08, 1))
         nm = c["name"].split(" ")
-        U.text(o, nm[0], (0, -h * 0.05), 0.026 * s, fg=fg, font=U.FONT_PLAIN)
-        U.text(o, nm[-1], (0, -h * 0.25), 0.03 * s, fg=fg)
+        U.text(o, nm[0], (0, -h * 0.17), 0.024 * s, fg=fg, font=U.FONT_PLAIN)
+        U.text(o, nm[-1], (0, -h * 0.37), 0.028 * s, fg=fg)
         st = list(c["stats"].items())
-        U.text(o, "  ".join("%s %d" % kv for kv in st[:2]), (0, -h * 0.55), 0.021 * s, fg=fg, font=U.FONT_PLAIN)
-        U.text(o, "  ".join("%s %d" % kv for kv in st[2:]), (0, -h * 0.75), 0.021 * s, fg=fg, font=U.FONT_PLAIN)
+        U.text(o, "  ".join("%s %d" % kv for kv in st[:2]), (0, -h * 0.6), 0.02 * s, fg=fg, font=U.FONT_PLAIN)
+        U.text(o, "  ".join("%s %d" % kv for kv in st[2:]), (0, -h * 0.8), 0.02 * s, fg=fg, font=U.FONT_PLAIN)
         return o
+
+    # player detail -------------------------------------------------------
+    def where_is(self, cid):
+        d = self.d
+        if cid in d["xi"]: return "STARTING XI" + ("  (CAPTAIN)" if cid == d.get("captain") else "")
+        if cid in d["bench"]: return "BENCH (SUB)"
+        return "RESERVES"
+
+    def show_player(self, c):
+        """PLAYER INFO: big portrait, name, number, position, age, rating, tier, club and stats"""
+        if c is None: return
+        self.close_overlay(); a = self.app; fill, edge, fg = TIER_STYLE[c["tier"]]; L = xs_faces.look_for(c)
+        o = self.overlay = DirectFrame(parent=a.aspect2d, frameColor=(0, 0, 0, 0.66), frameSize=(-4, 4, -2, 2), state=DGG.NORMAL, sortOrder=200)
+        U.panel(o, -1.05, 1.05, -0.62, 0.62, edge=edge)
+        DirectFrame(parent=o, frameColor=edge, frameSize=(-0.99, -0.07, -0.47, 0.47), state=DGG.DISABLED)
+        self.portrait(o, c, -0.98, -0.08, -0.46, 0.46, back=(fill[0] * 0.7, fill[1] * 0.7, fill[2] * 0.7, 1))
+        U.text(o, "PLAYER INFO", (0.02, 0.5), 0.03, fg=U.CYAN, align=TextNode.A_left, font=U.FONT_PLAIN)
+        U.text(o, c["name"], (0.02, 0.38), 0.06, fg=(1, 1, 1, 1), align=TextNode.A_left)
+        U.text(o, "#%d   %s   AGE %d" % (c.get("num", 0), {"GK": "GOALKEEPER", "DF": "DEFENDER", "MF": "MIDFIELDER", "FW": "FORWARD"}[c["pos"]], L["age"]),
+               (0.02, 0.29), 0.032, align=TextNode.A_left, font=U.FONT_PLAIN)
+        DirectFrame(parent=o, frameColor=edge, frameSize=(0.02, 0.5, 0.06, 0.24), state=DGG.DISABLED)
+        DirectFrame(parent=o, frameColor=fill, frameSize=(0.025, 0.495, 0.065, 0.235), state=DGG.DISABLED)
+        U.text(o, "%d  %s" % (c["rating"], c["tier"]), (0.26, 0.125), 0.05, fg=fg)
+        U.text(o, "CLUB  %s" % c["club"], (0.56, 0.17), 0.028, align=TextNode.A_left, font=U.FONT_PLAIN, wrap=16)
+        if self.d: U.text(o, self.where_is(c["id"]), (0.56, 0.09), 0.026, fg=(1, 0.9, 0.5, 1), align=TextNode.A_left, font=U.FONT_PLAIN)
+        for k, (nm, v) in enumerate(c["stats"].items()):
+            y = -0.03 - k * 0.095
+            U.text(o, nm, (0.02, y - 0.01), 0.03, align=TextNode.A_left, font=U.FONT_PLAIN)
+            U.bar(o, (0.2, y), 0.55, 0.022, v / 99.0, col=(0.3, 1.0, 0.45, 1) if v >= 80 else (1, 0.84, 0.08, 1) if v >= 65 else (1, 0.5, 0.4, 1))
+            U.text(o, str(v), (0.92, y - 0.01), 0.03, align=TextNode.A_right, font=U.FONT_PLAIN)
+        U.button(o, "CLOSE", (0.5, -0.52), self.close_overlay, w=0.16, h=0.04, scale=0.032, hint="Esc")
 
     # hub ---------------------------------------------------------------
     def show_hub(self):
@@ -294,10 +345,10 @@ class Arena:
                      edge=(0.3, 1.0, 0.45, 1) if i == 0 else (1, 0.84, 0.08, 1) if t == "ADD COINS" else U.PINK)
         U.text(o, "Match length follows SETTINGS (UNLIMITED by default). Coins on finish: 250 + 100 per goal + 500 win / 200 draw.",
                (-0.35, -0.82), 0.024, fg=(0.85, 0.88, 0.95, 1), font=U.FONT_PLAIN)
-        xi = sorted([self.card(i) for i in d["xi"]], key=lambda c: -c["rating"])[:5]
-        U.text(o, "YOUR BEST XI CARDS", (-1.55, 0.3), 0.03, fg=U.CYAN, align=TextNode.A_left, font=U.FONT_PLAIN)
+        xi = sorted([self.card(i) for i in d["xi"]], key=lambda c: -c["rating"])[:5]; self.faces.ensure(xi)
+        U.text(o, "YOUR BEST XI CARDS   (click a card for PLAYER INFO)", (-1.55, 0.3), 0.03, fg=U.CYAN, align=TextNode.A_left, font=U.FONT_PLAIN)
         for k, cc in enumerate(xi):
-            self.draw_card(o, cc, (-1.35 + k * 0.33, -0.05), 1.1, captain=cc["id"] == d.get("captain"))
+            self.draw_card(o, cc, (-1.35 + k * 0.33, -0.05), 1.1, captain=cc["id"] == d.get("captain"), cmd=lambda cc=cc: self.show_player(cc))
 
     # pick a team ---------------------------------------------------------
     def show_pick(self, first=False, mode="new"):
@@ -320,11 +371,13 @@ class Arena:
     def pick(self, i):
         if self.pick_mode == "change" and self.d: self.change_team(i)
         else: self.new_club(i)
-        self.sel = None; self.show_squad()
+        self.sel = None; self.faces.ensure([self.card(i) for i in self.d["xi"] + self.d["bench"]]); self.show_squad()
 
     # squad ---------------------------------------------------------------
     def show_squad(self):
         o = self._frame("arena-squad"); d = self.d; roles = self.slot_roles(); shape = F.FORMATIONS[d["formation"]]
+        res = self.reserves(); per = 9; pages = max(1, (len(res) + per - 1) // per); self.res_page = min(self.res_page, pages - 1)
+        self.faces.ensure([self.card(i) for i in d["xi"] + d["bench"]] + res[self.res_page * per:(self.res_page + 1) * per])
         U.text(o, "SQUAD   %s" % self.club_tuple()[0], (-0.2, 0.79), 0.045, fg=(1, 1, 1, 1))
         U.text(o, "TEAM RATING %d   CHEMISTRY %d/33" % (self.team_rating(), self.chemistry()), (-1.55, 0.7), 0.03, fg=U.CYAN,
                align=TextNode.A_left, font=U.FONT_PLAIN)
@@ -335,8 +388,11 @@ class Arena:
             U.button(o, "KIT " + kt, (-0.1 + k * 0.27, 0.6), lambda kt=kt: (self.set_kit(kt), self.show_squad()), w=0.12, h=0.032, scale=0.024,
                      edge=(1, 0.84, 0.08, 1) if d.get("kit", "HOME") == kt else (0.4, 0.4, 0.45, 1))
         U.button(o, "SET CAPTAIN: %s" % ("PICK A STARTER" if self.cap_mode else "OFF"), (0.82, 0.6),
-                 lambda: (setattr(self, "cap_mode", not self.cap_mode), self.show_squad()), w=0.2, h=0.032, scale=0.024,
+                 lambda: (setattr(self, "cap_mode", not self.cap_mode), setattr(self, "info_mode", False), self.show_squad()), w=0.2, h=0.032, scale=0.024,
                  edge=(1, 0.84, 0.08, 1) if self.cap_mode else (0.4, 0.4, 0.45, 1))
+        U.button(o, "PLAYER INFO: %s" % ("ON" if self.info_mode else "OFF"), (1.35, 0.6),
+                 lambda: (setattr(self, "info_mode", not self.info_mode), setattr(self, "cap_mode", False), setattr(self, "sel", None), self.show_squad()),
+                 w=0.17, h=0.032, scale=0.024, edge=U.CYAN if self.info_mode else (0.4, 0.4, 0.45, 1))
         # pitch
         DirectFrame(parent=o, frameColor=(0.16, 0.42, 0.14, 1), frameSize=(-1.55, 0.25, -0.62, 0.52), state=DGG.DISABLED)
         for k, (u, v, role) in enumerate(shape):
@@ -351,22 +407,25 @@ class Arena:
         for k, cid in enumerate(d["bench"]):
             self.draw_card(o, self.card(cid), (-1.12 + k * 0.2, -0.78), 0.5, sel=self.sel == ("bench", k), cmd=lambda k=k: self.click(("bench", k)))
         # reserves
-        res = self.reserves(); per = 9; pages = max(1, (len(res) + per - 1) // per); self.res_page = min(self.res_page, pages - 1)
         U.text(o, "RESERVES  %d   (page %d/%d)" % (len(res), self.res_page + 1, pages), (0.95, 0.5), 0.028, fg=U.CYAN, font=U.FONT_PLAIN)
         for k, c in enumerate(res[self.res_page * per:(self.res_page + 1) * per]):
             fill, edge, fg = TIER_STYLE[c["tier"]]
             U.button(o, "%d  %s  %s" % (c["rating"], c["pos"], c["name"]), (0.95, 0.4 - k * 0.095), lambda cid=c["id"]: self.click(("res", cid)),
                      w=0.55, h=0.036, scale=0.026, col=fill[:3] + (0.95,), fg=fg,
                      edge=(0.3, 1.0, 0.45, 1) if self.sel == ("res", c["id"]) else edge)
+            y = 0.4 - k * 0.095
+            self.portrait(o, c, 0.405, 0.475, y - 0.035, y + 0.035, back=(fill[0] * 0.72, fill[1] * 0.72, fill[2] * 0.72, 1))
         if pages > 1:
             U.button(o, "<", (0.55, -0.48), lambda: (setattr(self, "res_page", max(0, self.res_page - 1)), self.show_squad()), w=0.04, h=0.03, scale=0.03)
             U.button(o, ">", (1.35, -0.48), lambda: (setattr(self, "res_page", min(pages - 1, self.res_page + 1)), self.show_squad()), w=0.04, h=0.03, scale=0.03)
-        hint = ("Click a starter to make him captain." if self.cap_mode else
+        hint = ("Click a starter to make him captain." if self.cap_mode else "Click any player to see his PLAYER INFO." if self.info_mode else
                 "Click a player, then another place (starter, sub or reserve) to swap them." if self.sel is None else "Now click where he should go.")
         U.text(o, hint, (0.95, -0.58), 0.024, fg=(1, 0.9, 0.5, 1), font=U.FONT_PLAIN)
         U.button(o, "DONE", (0.95, -0.72), self.show_hub, w=0.2, h=0.04, scale=0.034, hint="Esc")
 
     def click(self, ref):
+        if self.info_mode:
+            return self.show_player(self.card(self._get(ref)))
         if self.cap_mode:
             if ref[0] == "xi": self.set_captain(self.d["xi"][ref[1]]); self.cap_mode = False
             self.show_squad(); return
@@ -398,14 +457,14 @@ class Arena:
         if cards is None: return self.show_packs()
         o = self._frame("arena-open"); name = PACKS[i][0]
         U.text(o, name, (0, 0.62), 0.07, fg=(1, 1, 1, 1))
-        n = len(cards); a = self.app
+        n = len(cards); a = self.app; self.faces.ensure(cards)
         for k, c in enumerate(cards):                       # reveal one by one, best card last
             x = (k - (n - 1) / 2.0) * 0.6
-            node = self.draw_card(o, c, (x, 0.08), 1.6); node.set_scale(0.001)
+            node = self.draw_card(o, c, (x, 0.08), 1.6, cmd=lambda c=c: self.show_player(c)); node.set_scale(0.001)
             a.do_method_later(0.35 + 0.55 * k, lambda t, nd=node: (nd.scaleInterval(0.3, 1.0, startScale=0.001).start() if not nd.is_empty() else None) and None,
                               "arena-reveal-%d" % k)
             if k == n - 1: a.sfx("checkpoint", 0.6)
-        U.text(o, "Added to your club. Put them in your XI from SQUAD.", (0, -0.42), 0.03, fg=(0.85, 0.88, 0.95, 1), font=U.FONT_PLAIN)
+        U.text(o, "Added to your club. Click a card for PLAYER INFO; put them in your XI from SQUAD.", (0, -0.42), 0.03, fg=(0.85, 0.88, 0.95, 1), font=U.FONT_PLAIN)
         ok = self.d["coins"] >= PACKS[i][1]
         U.button(o, "OPEN ANOTHER", (-0.6, -0.6), lambda: self.open_and_show(i), w=0.22, h=0.045, scale=0.034, enabled=ok)
         U.button(o, "SQUAD", (0, -0.6), self.show_squad, w=0.2, h=0.045, scale=0.034)

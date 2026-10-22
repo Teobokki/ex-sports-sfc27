@@ -5,7 +5,7 @@ import os, sys, json, time, math, random, threading, tempfile, urllib.request, s
 APP_NAME = "EX SPORTS SFC 27"
 APP_TITLE = "EX SPORTS\u2122 SFC 27"
 EDITION = "STANDARD EDITION"
-APP_VERSION = "1.0.0.3"
+APP_VERSION = "1.0.0.4"
 REPO = "Teobokki/ex-sports-sfc27"
 UPDATE_URL = "https://raw.githubusercontent.com/%s/main/latest.json" % REPO
 RELEASES_URL = "https://github.com/%s/releases/latest" % REPO
@@ -820,6 +820,15 @@ class App(ShowBase):
             c0 = ar.d["coins"]; cards = ar.open_and_show(2); ast["n"] = len(ar.d["cards"])
             L("GOLD PACK opened: screen", self.screen, "coins", c0, "->", ar.d["coins"], "cards", [(c["name"], c["pos"], c["rating"], c["tier"]) for c in cards])
             ar.open_pack(3); L("ELITE PACK", [(c["name"], c["rating"], c["tier"]) for c in ar.last_pack], "total cards", len(ar.d["cards"]))
+            fb = ar.faces; import xs_faces as XF
+            shown = [ar.card(i) for i in ar.d["xi"] + ar.d["bench"]] + cards; fb.ensure(shown)
+            keys = [fb.key(c, fb.kit_of(c)) for c in shown]; ok = [os.path.exists(fb.path(k)) for k in keys]
+            tex = fb.texture(cards[-1]); looks = [XF.look_for(c) for c in shown]
+            L("FACES: dir", fb.dir, "portraits", sum(ok), "/", len(ok), "unique", len(set(keys)), "failed", fb.failed,
+              "texture", tex is not None and (tex.get_x_size(), tex.get_y_size()), "deterministic", XF.look_for(cards[0]) == XF.look_for(dict(cards[0])),
+              "skin tones", len(set(l["skin"] for l in looks)), "hair styles", len(set(l["style"] for l in looks)), "beards", len(set(l["beard"] for l in looks)),
+              "ages", min(l["age"] for l in looks), "-", max(l["age"] for l in looks))
+            ar.show_player(cards[-1]); L("PLAYER INFO overlay", ar.overlay is not None, cards[-1]["name"]); ar.close_overlay()
         def a_change():
             n0, c0 = len(ar.d["cards"]), ar.d["coins"]; ar.show_pick(mode="change"); L("CHANGE TEAM screen", self.screen)
             ar.pick(3); L("changed to", ar.club_tuple()[0], "cards", n0, "->", len(ar.d["cards"]), "(kept)", "coins kept", ar.d["coins"] == c0,
