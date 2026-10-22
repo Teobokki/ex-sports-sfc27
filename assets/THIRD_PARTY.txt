@@ -1,0 +1,6 @@
+EX SPORTS SFC 27 STANDARD EDITION - third-party components
+
+Engine: Panda3D (Modified BSD licence), https://www.panda3d.org
+Fonts (assets/ui_font.ttf, assets/ui_plain.ttf): Exo 2, SIL Open Font License 1.1 (https://openfontlicense.org)
+Python runtime and numpy are bundled under their own licences (PSF licence, BSD licence).
+All clubs, players, places and brands in the game are fictional.
