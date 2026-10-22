@@ -5,7 +5,7 @@ import os, sys, json, time, math, random, threading, tempfile, urllib.request, s
 APP_NAME = "EX SPORTS SFC 27"
 APP_TITLE = "EX SPORTS\u2122 SFC 27"
 EDITION = "STANDARD EDITION"
-APP_VERSION = "1.0.0.1"
+APP_VERSION = "1.0.0.2"
 REPO = "Teobokki/ex-sports-sfc27"
 UPDATE_URL = "https://raw.githubusercontent.com/%s/main/latest.json" % REPO
 RELEASES_URL = "https://github.com/%s/releases/latest" % REPO
@@ -47,7 +47,8 @@ from direct.showbase.ShowBase import ShowBase
 from direct.gui.DirectGui import DirectFrame, DirectEntry, DGG
 from direct.gui.OnscreenImage import OnscreenImage
 from direct.gui import DirectGuiGlobals
-from panda3d.core import (Material, TextNode, TransparencyAttrib, WindowProperties, PTA_LVecBase3f, Texture, PNMImage, Vec3, AntialiasAttrib)
+from panda3d.core import (Material, TextNode, TransparencyAttrib, WindowProperties, PTA_LVecBase3f, Texture, PNMImage, Vec3, AntialiasAttrib,
+                          SamplerState)
 import xs_ui as U
 import xs_sfc as F
 import xs_avatar as A
@@ -92,8 +93,10 @@ def check_update():
     return "latest", "You have the latest version (%s)." % APP_VERSION
 
 
-DEFAULT_SETTINGS = {"duration": 0, "home": 1, "away": 0, "home_kit": "yellow", "master": 0.9, "sfx": 0.8, "music": 0.5,
-                    "fov": 60, "quality": "HIGH", "fullscreen": False}
+INTRO_SECS = 6.0                      # v1.0.0.2 EX SPORTS intro before the title screen (every launch, skippable)
+DEFAULT_SETTINGS = {"duration": 0, "home": 1, "away": 0, "home_kit": "yellow", "master": 0.9, "sfx": 0.8, "music": 0.5, "voice": 0.9,
+                    "fov": 60, "quality": "HIGH", "fullscreen": False,
+                    "rec_quality": "720p30", "rec_watermark": False}
 DURATIONS = (0, 4, 8, 12, 90)
 SKY = (0.55, 0.7, 0.9)
 
@@ -188,6 +191,7 @@ class Game:
         if self.match is not None: return
         self.app.clear_screen(); self.app.play_music(None)
         self.match = F.Match(self, **kw)
+        self.app.exrec.begin("ARENA" if kw.get("arena") else "ONLINE" if kw.get("online") is not None else "KICK OFF")
 
     def quick_match(self, autoplay=False):
         st = self.settings
@@ -198,10 +202,13 @@ class Game:
         self.app.clear_screen(); self.app.play_music(None)
         try: self.match = F.Match(self, mode="view", setup=setup, online=self.online)
         except Exception as e: log_error(e); self.match = None
+        if self.match is not None: self.app.exrec.begin("ONLINE")
 
     def match_over(self, again):
-        self.app.hide_pause()
+        self.app.hide_pause(); self.app.exrec.end()
         if again: return
+        if getattr(self, "arena_return", False):
+            self.arena_return = False; self.app.play_music("music_menu"); self.app.arena.show_hub(); return
         if self.online.sess is not None: self.app.play_music("music_menu"); self.online.open()
         else: self.app.show_menu()
 
@@ -220,6 +227,7 @@ class Game:
 class App(ShowBase):
     VERSION = APP_VERSION
     BASE = BASE
+    DATA = DATA
 
     def __init__(self):
         ShowBase.__init__(self)
@@ -250,6 +258,9 @@ class App(ShowBase):
         for n in ("click", "checkpoint", "beep", "go", "win", "switch", "bump"):
             try: self._sfx[n] = self.loader.load_sfx(Filename.from_os_specific(Aj("sfx", n + ".wav")))
             except Exception: pass
+        for n in ("intro", "intro_vo1", "intro_vo2"):
+            try: self._sfx[n] = self.loader.load_sfx(Filename.from_os_specific(Aj("sfx", n + ".wav")))
+            except Exception: pass
         self.music = {}
         try:
             s = self.loader.load_music(Filename.from_os_specific(Aj("sfx", "music_menu.wav"))); s.set_loop(True); self.music["music_menu"] = s
@@ -268,7 +279,12 @@ class App(ShowBase):
         self.accept("window-event", self._on_window_event)
         if self.settings.get("fullscreen"): self.apply_fullscreen()
         self.task_mgr.add(self._frame, "frame", sort=50)
-        self.show_title()
+        self.intro = None
+        import xs_arena; self.arena = xs_arena.Arena(self)
+        import xs_recorder; self.exrec = xs_recorder.Recorder(self)
+        self.accept("f9", self.exrec.toggle); self.accept("f10", self.exrec.save_moment)
+        if os.environ.get("EXS_NO_INTRO"): self.show_title()
+        else: self.start_intro()
         if os.environ.get("EXS_SMOKE"): self.do_method_later(1.0, self._smoke, "exs-smoke")
         ts = os.environ.get("EXS_TESTSCRIPT")
         if ts and not getattr(sys, "frozen", False):
@@ -286,6 +302,8 @@ class App(ShowBase):
     def sfx(self, name, vol=1.0):
         s = self._sfx.get(name)
         if s: s.set_volume(vol * self.vol("sfx")); s.play()
+        rec = getattr(self, "exrec", None)
+        if s and rec is not None: rec.note_sound(name, vol * self.vol("sfx"))    # EX SPORTS RECORDER mixes the game's own sounds
 
     def play_music(self, name):
         if self.cur_music == name:
@@ -323,15 +341,21 @@ class App(ShowBase):
 
     # ------------------------------------------------------------ input
     def key(self, k):
+        if self.intro is not None:
+            if k == "space": self.skip_intro()
+            return
         m = self.game.match
         if m is not None and self.pause_ui is None: m.key(k)
 
     def on_enter(self):
+        if self.intro is not None: self.skip_intro(); return
         if self.screen == "title": self.show_menu()
 
     def on_escape(self):
         g = self.game
+        if self.intro is not None: self.skip_intro(); return
         if self.dialog is not None: self._close_dialog(); return
+        if self.screen and self.screen.startswith("arena") and g.match is None: self.arena.back(); return
         if g.match is not None:
             if self.pause_ui is not None: self.hide_pause()
             else: self.show_pause()
@@ -340,7 +364,7 @@ class App(ShowBase):
             if g.online.view != "main": g.online.goto("main")
             else: g.online.back()
             return
-        if self.screen in ("teams", "settings"): self.save(); self.show_menu()
+        if self.screen in ("teams", "settings", "recordings"): self.save(); self.show_menu()
 
     # ------------------------------------------------------------ screens
     def clear_screen(self):
@@ -360,8 +384,72 @@ class App(ShowBase):
         U.text(o, APP_TITLE, (x, y), 0.13 * sc, fg=(1, 0.84, 0.08, 1), shadow=(0, 0, 0, 1))
         U.text(o, EDITION, (x, y - 0.1 * sc), 0.055 * sc, fg=(1, 1, 1, 1), shadow=(0, 0, 0, 1))
 
-    def show_title(self):
-        o = self._frame_ui("title", 0.25); self.play_music("music_menu")
+    # ------------------------------------------------------------ v1.0.0.2 intro (6 s, skippable, every launch)
+    def start_intro(self):
+        """Black screen, the EX SPORTS logo fades and scales in (~1 s), holds with a slow gentle scale, then everything
+        fades out (0.8 s) into the title screen. Original sting + en-GB voiceover. No glow / bloom."""
+        self.show_title(music=False)                       # built now, under the black intro card (no stall at the fade)
+        tex = self.loader.load_texture(Filename.from_os_specific(os.path.join(BASE, "assets", "intro_logo.png")))
+        tex.set_minfilter(SamplerState.FT_linear_mipmap_linear); tex.set_magfilter(SamplerState.FT_linear); tex.set_anisotropic_degree(4)
+        tex.set_wrap_u(SamplerState.WM_clamp); tex.set_wrap_v(SamplerState.WM_clamp)
+        o = DirectFrame(parent=self.aspect2d, frameColor=(0.0, 0.0, 0.0, 1), frameSize=(-60, 60, -60, 60), state=DGG.NORMAL, sortOrder=1000)
+        o.set_bin("gui-popup", 1000); o.set_transparency(TransparencyAttrib.M_alpha)
+        o.bind(DGG.B1PRESS, lambda e: self.skip_intro())
+        logo = OnscreenImage(image=tex, parent=o, pos=(0, 0, 0), scale=0.45)
+        logo.set_transparency(TransparencyAttrib.M_alpha); logo.set_color_scale(1, 1, 1, 0)
+        self.intro = {"root": o, "logo": logo, "t0": None, "fired": set(), "titled": False}
+        self.task_mgr.add(self._intro_task, "exs-intro", sort=60)
+
+    def _intro_play(self, name, kind):
+        s = self._sfx.get(name)
+        if s:
+            s.set_volume(float(self.settings.get("master", 0.9)) * float(self.settings.get(kind, 0.8)))
+            s.play()
+
+    def _intro_task(self, task):
+        it = self.intro
+        if it is None: return task.done
+        now = time.time()
+        if it["t0"] is None: it["t0"] = now                 # start counting on the first drawn frame
+        e = now - it["t0"]
+        ease = lambda x: 1 - (1 - max(0.0, min(1.0, x))) ** 3
+        # timeline (s): 0.2-1.2 logo in | 1.2-5.2 hold, slow scale | 5.2-6.0 fade out to the title screen
+        a_in = ease((e - 0.2) / 1.0)
+        a_out = 1.0 - max(0.0, min(1.0, (e - 5.2) / 0.8))
+        sc = 0.86 + 0.14 * a_in + 0.04 * ease((e - 1.2) / 4.8)
+        top = float(getattr(self, "a2dTop", 1.0)) or 1.0; right = float(getattr(self, "a2dRight", 1.0)) or 1.0
+        r = min(0.45 * top, 0.92 * right)                   # ~45 % of the screen height, never wider than the window
+        it["logo"].set_scale(r * sc); it["logo"].set_color_scale(1, 1, 1, a_in * a_out)
+        it["root"]["frameColor"] = (0.0, 0.0, 0.0, a_out)
+        for at, name, kind in ((0.1, "intro", "sfx"), (1.0, "intro_vo1", "voice"), (2.75, "intro_vo2", "voice")):
+            if e >= at and name not in it["fired"]:
+                it["fired"].add(name); self._intro_play(name, kind)
+        if e >= 5.2 and not it["titled"]:
+            it["titled"] = True                              # the title is already built underneath; the fade reveals it
+            if self.screen == "title": self.play_music("music_menu")
+        if e >= INTRO_SECS:
+            self._end_intro(e); return task.done
+        return task.cont
+
+    def _end_intro(self, e, skipped=False):
+        it = self.intro
+        if it is None: return
+        self.intro = None; it["root"].destroy(); self.task_mgr.remove("exs-intro")
+        if skipped:
+            for n in ("intro", "intro_vo1", "intro_vo2"):
+                s = self._sfx.get(n)
+                if s: s.stop()
+        if not it["titled"] and self.screen == "title": self.play_music("music_menu")
+        self.intro_secs = e; self.intro_skipped = skipped
+
+    def skip_intro(self):
+        it = self.intro
+        if it is None: return
+        self._end_intro(time.time() - (it["t0"] or time.time()), skipped=True)
+
+    def show_title(self, music=True):
+        o = self._frame_ui("title", 0.25)
+        if music: self.play_music("music_menu")
         img = OnscreenImage(image=self.tex_title, parent=o, pos=(-0.62, 0, 0.04), scale=(0.78, 1, 0.78))
         U.panel(o, -1.42, 0.18, -0.76, 0.84, col=(0, 0, 0, 0), edge=(1, 0.84, 0.08, 1)); img.reparent_to(o)
         self._title_block(o, 0.85, 0.32)
@@ -373,15 +461,38 @@ class App(ShowBase):
         img = OnscreenImage(image=self.tex_title, parent=o, pos=(-0.85, 0, 0.0), scale=(0.55, 1, 0.55))
         self._title_block(o, 0.55, 0.66, 0.8)
         d = self.settings["duration"]
-        items = [("KICK OFF", lambda: self.game.quick_match()), ("ONLINE", lambda: (self.clear_screen(), self.game.online.open())),
-                 ("TEAMS", self.show_teams), ("SETTINGS", self.show_settings), ("CHECK FOR UPDATES", self.check_updates), ("QUIT", self.userExit)]
+        items = [("KICK OFF", lambda: self.game.quick_match()), ("SFC 27 ARENA", self.arena.show_hub),
+                 ("ONLINE", lambda: (self.clear_screen(), self.game.online.open())),
+                 ("TEAMS", self.show_teams), ("SETTINGS", self.show_settings), ("RECORDINGS", self.show_recordings), ("CHECK FOR UPDATES", self.check_updates),
+                 ("QUIT", self.userExit)]
+        self.menu_labels = [t for t, _ in items]
         for i, (t, fn) in enumerate(items):
-            U.button(o, t, (0.55, 0.38 - i * 0.13), fn, w=0.36, h=0.05, scale=0.045,
+            U.button(o, t, (0.55, 0.44 - i * 0.105), fn, w=0.36, h=0.042, scale=0.04,
                      edge=(0.3, 1.0, 0.45, 1) if i == 0 else (1, 0.35, 0.3, 1) if t == "QUIT" else U.PINK)
         c0, c1 = self.club_name(self.settings["home"]), self.club_name(self.settings["away"])
         U.text(o, "%s%s  vs  %s   -   %s" % (c0, " (YELLOW KIT)" if self.settings.get("home_kit") == "yellow" else "", c1, "UNLIMITED" if not d else "%d MIN" % d),
-               (0.55, -0.48), 0.028, fg=(1, 1, 1, 0.9), font=U.FONT_PLAIN, shadow=(0, 0, 0, 1))
+               (0.55, -0.56), 0.028, fg=(1, 1, 1, 0.9), font=U.FONT_PLAIN, shadow=(0, 0, 0, 1))
         self._footer(o)
+
+    def show_recordings(self, page=0):
+        import xs_recorder as XR
+        o = self._frame_ui("recordings", 0.6)
+        U.panel(o, -1.3, 1.3, -0.82, 0.82, edge=(0.9, 0.15, 0.15, 1))
+        U.text(o, "RECORDINGS", (0, 0.7), 0.07, fg=(1, 0.3, 0.3, 1))
+        d = XR.downloads_dir(); clips = self.exrec.clips(); per = 8; pages = max(1, (len(clips) + per - 1) // per); page = min(page, pages - 1)
+        U.text(o, "EX SPORTS RECORDER clips in your Downloads folder:  %s" % d, (0, 0.6), 0.026, fg=(0.85, 0.88, 0.95, 1), font=U.FONT_PLAIN)
+        if not clips:
+            U.text(o, "No clips yet. During a match press F9 to record, or F10 to save the last 30 seconds.", (0, 0.2), 0.03, font=U.FONT_PLAIN)
+        for k, p in enumerate(clips[page * per:(page + 1) * per]):
+            y = 0.47 - k * 0.11; mb = os.path.getsize(p) / 1e6
+            U.text(o, "%s   (%.1f MB)" % (os.path.basename(p)[:-4], mb), (-1.2, y - 0.012), 0.027, align=TextNode.A_left, font=U.FONT_PLAIN)
+            U.button(o, "PLAY", (1.12, y), lambda p=p: XR.open_path(p), w=0.1, h=0.035, scale=0.028, edge=(0.3, 1.0, 0.45, 1))
+        if pages > 1:
+            U.button(o, "<", (-0.2, -0.45), lambda: self.show_recordings(max(0, page - 1)), w=0.04, h=0.03, scale=0.03)
+            U.text(o, "%d/%d" % (page + 1, pages), (0, -0.46), 0.03, font=U.FONT_PLAIN)
+            U.button(o, ">", (0.2, -0.45), lambda: self.show_recordings(min(pages - 1, page + 1)), w=0.04, h=0.03, scale=0.03)
+        U.button(o, "OPEN DOWNLOADS FOLDER", (-0.35, -0.62), lambda: XR.open_path(d), w=0.3, h=0.045, scale=0.032)
+        U.button(o, "BACK", (0.35, -0.62), self.show_menu, w=0.2, h=0.045, scale=0.036, hint="Esc")
 
     def show_teams(self):
         o = self._frame_ui("teams", 0.55); st = self.settings; pf = self.profile
@@ -450,7 +561,7 @@ class App(ShowBase):
                  lambda: (st.__setitem__("quality", "LOW" if st.get("quality") == "HIGH" else "HIGH"), self.apply_quality(), self.show_settings()),
                  w=0.2, h=0.035, scale=0.028)
         U.text(o, "AUDIO", (-1.05, 0.17), 0.034, align=TextNode.A_left, font=U.FONT_PLAIN)
-        for k, (lbl, key) in enumerate((("MASTER", "master"), ("EFFECTS", "sfx"), ("MUSIC", "music"))):
+        for k, (lbl, key) in enumerate((("MASTER", "master"), ("EFFECTS", "sfx"), ("MUSIC", "music"), ("VOICE", "voice"))):
             yy = 0.17 - k * 0.09
             U.text(o, "%s  %d%%" % (lbl, round(st[key] * 100)), (-0.3, yy - 0.01), 0.03, align=TextNode.A_left, font=U.FONT_PLAIN)
             for j, d in enumerate((-0.1, 0.1)):
@@ -458,8 +569,16 @@ class App(ShowBase):
         U.text(o, "CONTROLS", (-1.05, -0.17), 0.034, align=TextNode.A_left, font=U.FONT_PLAIN)
         U.text(o, "WASD / ARROWS move     SPACE pass     F shoot     R tackle     SHIFT sprint     ESC pause / END MATCH",
                (0, -0.25), 0.027, fg=(0.9, 0.92, 1, 1), font=U.FONT_PLAIN)
+        U.text(o, "EX SPORTS RECORDER:   F9 start / stop recording     F10 save the last 30 seconds     clips go to Downloads",
+               (0, -0.31), 0.025, fg=(1, 0.6, 0.6, 1), font=U.FONT_PLAIN)
+        U.text(o, "RECORDER", (-1.05, -0.5), 0.034, align=TextNode.A_left, font=U.FONT_PLAIN)
+        for k, q in enumerate(("720p30", "1080p30", "1080p60")):
+            U.button(o, q, (-0.42 + k * 0.27, -0.485), lambda q=q: (st.__setitem__("rec_quality", q), self.show_settings()), w=0.12, h=0.032, scale=0.026,
+                     edge=(0.9, 0.15, 0.15, 1) if st.get("rec_quality", "720p30") == q else (0.4, 0.4, 0.45, 1))
+        U.button(o, "WATERMARK: %s" % ("ON" if st.get("rec_watermark") else "OFF"), (0.55, -0.485),
+                 lambda: (st.__setitem__("rec_watermark", not st.get("rec_watermark")), self.show_settings()), w=0.17, h=0.032, scale=0.026)
         U.text(o, "Online play needs no admin rights or firewall setup. Your game always makes the first call (outbound-first).",
-               (0, -0.38), 0.024, fg=(0.8, 0.85, 1, 1), font=U.FONT_PLAIN)
+               (0, -0.39), 0.024, fg=(0.8, 0.85, 1, 1), font=U.FONT_PLAIN)
         U.button(o, "DONE", (0, -0.68), lambda: (self.save(), self.show_menu()), w=0.2, h=0.045, scale=0.04, hint="Esc")
 
     def _vol(self, key, d):
@@ -481,9 +600,27 @@ class App(ShowBase):
         items = [("RESUME", self.hide_pause)]
         if not m.done: items.append(("LEAVE MATCH" if m.mode == "view" else "END MATCH", end))
         else: items.append(("LEAVE STADIUM", lambda: (self.hide_pause(), m.quit())))
+        items.append(("RECORDER", self.show_recorder_panel))
         items.append(("QUIT GAME", self.userExit))
         for i, (t, fn) in enumerate(items):
-            U.button(o, t, (0, 0.12 - i * 0.13), fn, w=0.3, h=0.048, scale=0.04, edge=(1.0, 0.75, 0.2, 1) if "MATCH" in t else U.PINK)
+            U.button(o, t, (0, 0.14 - i * 0.12), fn, w=0.3, h=0.046, scale=0.04, edge=(1.0, 0.75, 0.2, 1) if "MATCH" in t else
+                     (0.9, 0.15, 0.15, 1) if t == "RECORDER" else U.PINK)
+
+    def show_recorder_panel(self):
+        """pause menu > RECORDER"""
+        if self.pause_ui is None: return
+        r = self.exrec; o = self.pause_ui
+        for c in o.get_children(): c.remove_node()
+        U.panel(o, -0.62, 0.62, -0.5, 0.5, edge=(0.9, 0.15, 0.15, 1))
+        U.text(o, "EX SPORTS RECORDER", (0, 0.36), 0.06, fg=(1, 0.3, 0.3, 1))
+        st = ("RECORDING  %d:%02d" % (int(r.t() - r.recording) // 60, int(r.t() - r.recording) % 60)) if r.recording is not None else "not recording"
+        U.text(o, "%s     quality %s     saves to Downloads" % (st, r.quality()), (0, 0.27), 0.028, fg=(1, 1, 1, 0.9), font=U.FONT_PLAIN)
+        U.button(o, "STOP RECORDING" if r.recording is not None else "START RECORDING", (0, 0.13),
+                 lambda: (self.hide_pause(), r.toggle()), w=0.34, h=0.046, scale=0.036, hint="F9", edge=(0.9, 0.15, 0.15, 1))
+        U.button(o, "SAVE MOMENT (LAST 30 S)", (0, 0.01), lambda: (self.hide_pause(), r.save_moment()), w=0.34, h=0.046, scale=0.034, hint="F10")
+        U.button(o, "BACK", (0, -0.13), lambda: (self.hide_pause(), self.show_pause()), w=0.34, h=0.046, scale=0.036, hint="Esc")
+        U.text(o, "Clips: MP4 (H.264 + AAC), ready to upload to YouTube yourself. Nothing is uploaded automatically.", (0, -0.3), 0.024,
+               fg=(0.85, 0.88, 0.95, 1), font=U.FONT_PLAIN, wrap=40)
 
     def hide_pause(self):
         if self.pause_ui is not None: self.pause_ui.destroy(); self.pause_ui = None
@@ -611,7 +748,65 @@ class App(ShowBase):
         import xs_net as N
         st = {"bot": None, "got": {}}
         g = self.game
-        def menu(): self.show_menu(); L("version", APP_VERSION, "screen", self.screen, "title", APP_TITLE, EDITION)
+        def menu(): self.show_menu(); L("version", APP_VERSION, "screen", self.screen, "title", APP_TITLE, EDITION, "menu", self.menu_labels)
+        ar = self.arena; ast = {}
+        def a_open():
+            ar.show_hub(); L("ARENA opened: screen", self.screen, "(first visit -> PICK A TEAM)", "save", ar.path)
+        def a_pick():
+            ar.pick(1); d = ar.d
+            L("picked", ar.club_tuple()[0], "screen", self.screen, "formation", d["formation"], "XI", len(d["xi"]), "bench", len(d["bench"]),
+              "coins", d["coins"], "team rating", ar.team_rating(), "chem", ar.chemistry())
+            L("XI", [(ar.card(i)["name"], ar.card(i)["pos"], ar.card(i)["rating"], ar.card(i)["tier"]) for i in d["xi"]])
+        def a_squad():
+            d = ar.d; ar.set_formation("4-3-3"); ar.set_kit("YELLOW"); ar.set_captain(d["xi"][9])
+            before = (d["xi"][3], d["bench"][2]); ar.click(("xi", 3)); ar.click(("bench", 2))
+            ar.cap_mode = True; ar.click(("xi", 10))
+            L("squad: formation", d["formation"], "kit", d["kit"], "captain", ar.card(d["captain"])["name"], "swap xi3<->bench2",
+              (d["xi"][3], d["bench"][2]) == (before[1], before[0]), "team rating", ar.team_rating(), "chem", ar.chemistry(), "screen", self.screen)
+        def a_coins():
+            ar.show_packs(); c0 = ar.d["coins"]; ar.show_add_coins(); L("ADD COINS dialog", ar.overlay is not None)
+            for n in (1000, 10000, 100000): ar.add_coins(n)
+            L("coins", c0, "->", ar.d["coins"]); ar._refresh_after_coins()
+        def a_pack():
+            c0 = ar.d["coins"]; cards = ar.open_and_show(2); ast["n"] = len(ar.d["cards"])
+            L("GOLD PACK opened: screen", self.screen, "coins", c0, "->", ar.d["coins"], "cards", [(c["name"], c["pos"], c["rating"], c["tier"]) for c in cards])
+            ar.open_pack(3); L("ELITE PACK", [(c["name"], c["rating"], c["tier"]) for c in ar.last_pack], "total cards", len(ar.d["cards"]))
+        def a_change():
+            n0, c0 = len(ar.d["cards"]), ar.d["coins"]; ar.show_pick(mode="change"); L("CHANGE TEAM screen", self.screen)
+            ar.pick(3); L("changed to", ar.club_tuple()[0], "cards", n0, "->", len(ar.d["cards"]), "(kept)", "coins kept", ar.d["coins"] == c0,
+                          "formation", ar.d["formation"])
+            ar.show_hub(); L("hub", self.screen)
+        def a_match():
+            st = ar.play_match(autoplay=True); m = g.match
+            L("ARENA match started", m is not None, "players", len(m.fps), "clubs", m.clubs[0][0], "vs", m.clubs[1][0], "kit", m.clubs[0][2],
+              "opp rating", st["opp_rating"], "home XI", [f.name for f in m.fps if f.team == 0])
+        def a_end():
+            m = g.match; L("ARENA after play: clock", m.clock_text(), "score", m.score); c0 = ar.d["coins"]; m.end_match()
+            L("ARENA END MATCH: reward", m.arena_coins, "coins", c0, "->", ar.d["coins"], "played", ar.d["played"]); m.quit()
+            L("back to", self.screen, "save exists", os.path.exists(ar.path))
+        rec = self.exrec; rst = {}
+        def r_start():
+            L("RECORDER F9:", rec.toggle(), "label", rec.sess and rec.sess["label"], "quality", rec.quality(), "ffmpeg", rec.ff)
+        def r_diag(tag):
+            ss = rec.sess
+            if ss is None: L("RECORDER diag", tag, "no session", rec.last_error); return
+            lg = ""
+            try: lg = open(os.path.join(ss["dir"], "ffmpeg.log"), "rb").read().decode("utf-8", "replace")[-300:]
+            except Exception: pass
+            L("RECORDER diag", tag, "size", ss["size"], "t", round(rec.t(), 2), "frames", ss["n"], "proc", rec.proc and rec.proc.poll(),
+              "segs", [(os.path.basename(x[0]), x[1], x[2]) for x in rec.segments()][-4:], "files", sorted(os.listdir(ss["dir"]))[-5:], "ffmpeg.log", repr(lg))
+        def r_stop():
+            r_diag("before stop")
+            rst["kick"] = rec.toggle(); L("RECORDER F9 stop -> saving", rst["kick"]["path"])
+        def r_moment():
+            r_diag("before moment")
+            rst["moment"] = rec.save_moment(); L("RECORDER F10 SAVE MOMENT -> saving", rst["moment"]["path"])
+        def r_check():
+            for k in ("kick", "moment"):
+                r = rst.get(k) or {}; p = r.get("path")
+                L("RECORDER clip", k, "ok", r.get("ok"), "exists", bool(p and os.path.exists(p)), "MB", round(os.path.getsize(p) / 1e6, 2) if p and os.path.exists(p) else None,
+                  "path", p, "err", rec.last_error)
+            self.show_recordings(); L("RECORDINGS screen", self.screen, "clips listed", len(rec.clips())); self.show_menu()
         def quick(): g.quick_match(autoplay=True); m = g.match; L("quick match", m is not None, "unlimited", m.unlimited(), "clubs", m.clubs[0][0], m.clubs[1][0], "home kit", m.clubs[0][2])
         def check1():
             m = g.match; L("after play: clock", m.clock_text(), "done", m.done, "state", m.state, "score", m.score)
@@ -641,11 +836,18 @@ class App(ShowBase):
         def done():
             if st["bot"] is not None: st["bot"].close(); st["bot"] = None
             g.online.leave(quiet=True); L("SMOKE OK"); lf.close(); self.userExit()
-        steps = [(3.0, menu), (1.0, quick), (float(os.environ.get("EXS_SMOKE_PLAY", "20")), check1), (0.5, pause), (1.0, end), (2.0, leave),
-                 (1.0, host), (8.0, bot), (6.0, online_match), (8.0, online_check), (2.0, done)]
-        state = {"i": 0, "t": time.time() + steps[0][0]}
+        steps = [(3.0, menu), (1.0, quick), (2.0, r_start), (float(os.environ.get("EXS_SMOKE_PLAY", "20")), check1), (0.5, r_stop),
+                 (0.5, pause), (1.0, end), (2.0, leave),
+                 (1.0, a_open), (1.5, a_pick), (1.5, a_squad), (1.0, a_coins), (1.0, a_pack), (3.0, a_change), (1.0, a_match),
+                 (float(os.environ.get("EXS_SMOKE_PLAY", "20")), r_moment), (0.5, a_end), (8.0, r_check), (2.0, host), (8.0, bot), (6.0, online_match), (8.0, online_check), (2.0, done)]
+        state = {"i": 0, "t": time.time() + steps[0][0], "intro": False}
         def run(t):
             try:
+                if self.intro is not None:                  # v1.0.0.2: let the 6 s intro play first
+                    state["t"] = time.time() + steps[0][0]; return t.cont
+                if not state["intro"]:
+                    state["intro"] = True
+                    L("intro finished after %.2f s (skipped %s), screen %s" % (getattr(self, "intro_secs", -1), getattr(self, "intro_skipped", None), self.screen))
                 if time.time() < state["t"]: return t.cont
                 d, fn = steps[state["i"]]; fn(); state["i"] += 1
                 if state["i"] >= len(steps): return t.done

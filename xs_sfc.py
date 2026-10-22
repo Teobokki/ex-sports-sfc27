@@ -28,6 +28,17 @@ YELLOW = (1.0, 0.84, 0.05)
 AI_NAMES = ["HARU", "MIO", "REN", "YUI", "SOTA", "EMI", "KOJI", "NAO", "RIKU", "AOI", "DAI", "KANA", "SHO", "MEI", "TOMO", "YUKI"]
 # 7-a-side shape for the team attacking +v: (u, v, role)
 SHAPE = [(0, -50.5, "GK"), (-13, -31, "DF"), (13, -31, "DF"), (-21, -11, "MF"), (0, -15, "MF"), (21, -11, "MF"), (0, 4, "FW")]
+# v1.0.0.2 SFC 27 ARENA: 11-a-side formations, slot 0 = GK, the LAST slot = the central striker you control.
+_B4 = [(-24, -33, "DF"), (-8, -36, "DF"), (8, -36, "DF"), (24, -33, "DF")]
+FORMATIONS = {
+    "4-4-2":   [(0, -50.5, "GK")] + _B4 + [(-24, -14, "MF"), (-8, -16, "MF"), (8, -16, "MF"), (24, -14, "MF"), (-7, 2, "FW"), (7, 4, "FW")],
+    "4-3-3":   [(0, -50.5, "GK")] + _B4 + [(-14, -17, "MF"), (0, -20, "MF"), (14, -17, "MF"), (-22, 0, "FW"), (22, 0, "FW"), (0, 4, "FW")],
+    "4-2-3-1": [(0, -50.5, "GK")] + _B4 + [(-9, -22, "MF"), (9, -22, "MF"), (-22, -6, "MF"), (0, -8, "MF"), (22, -6, "MF"), (0, 4, "FW")],
+    "3-5-2":   [(0, -50.5, "GK"), (-16, -35, "DF"), (0, -37, "DF"), (16, -35, "DF"), (-28, -14, "MF"), (-12, -18, "MF"), (0, -22, "MF"),
+                (12, -18, "MF"), (28, -14, "MF"), (-7, 2, "FW"), (7, 4, "FW")],
+    "5-3-2":   [(0, -50.5, "GK"), (-28, -28, "DF"), (-14, -35, "DF"), (0, -37, "DF"), (14, -35, "DF"), (28, -28, "DF"),
+                (-14, -16, "MF"), (0, -19, "MF"), (14, -16, "MF"), (-7, 2, "FW"), (7, 4, "FW")],
+}
 
 
 def in_stadium(x, y, pad=0.0):
@@ -232,11 +243,15 @@ class FP:
 
 class Match:
     """host / offline simulation (mode 'sim') or online client view (mode 'view')"""
-    def __init__(self, game, home_club=0, away_club=1, minutes_real=0.0, online=None, versus=False, mode="sim", setup=None, autoplay=False, kits=None):
+    def __init__(self, game, home_club=0, away_club=1, minutes_real=0.0, online=None, versus=False, mode="sim", setup=None, autoplay=False, kits=None,
+                 arena=None):
         self.g = game; self.app = game.app; self.mode = mode; self.online = online; self.versus = versus
+        # v1.0.0.2 SFC 27 ARENA: {"clubs": [home, away], "shapes": [..], "players": [[{name, num, rating}] x7] x2, "on_finish": f(match)->coins}
+        self.arena = arena; self.arena_coins = None
         # v1.0.5.1: minutes_real 0 = UNLIMITED (the default): the clock counts up, no full-time whistle, you end it yourself
         self.secs = 0.0 if not minutes_real else max(20.0, minutes_real * 60.0); self.clock = 0.0; self.score = [0, 0]; self.ended_by = None
         self.clubs = [CLUBS[home_club % len(CLUBS)], CLUBS[away_club % len(CLUBS)]]; self.kits = kits; self.club_idx = (home_club, away_club)
+        if arena: self.clubs = [tuple(c) for c in arena["clubs"]]
         if mode == "sim": self._apply_kits(kits)
         self.root = self.app.render.attach_new_node("sfc-match"); self.fps = []; self.ball = [CX, CY, BALL_R]; self.bv = [0.0, 0.0, 0.0]
         self.owner = None; self.last_touch = None; self.state = "kickoff"; self.state_t = 2.0; self.kick_team = 0
@@ -312,18 +327,27 @@ class Match:
         if self.online is not None and fr is not None and fr.sess is not None and fr.sess.role == "host":
             remote = [(pid, p) for pid, p in fr.sess.peers.items()]
         names = list(AI_NAMES); random.shuffle(names)
+        ar = self.arena
         for team in (0, 1):
-            for i, (u, v, role) in enumerate(SHAPE):
-                fp = FP(team, i, role, (u, v), names.pop() if names else "AI", 1 if role == "GK" else i + 1)
+            shape = ar["shapes"][team] if ar else SHAPE
+            for i, (u, v, role) in enumerate(shape):
+                if ar:
+                    pc = ar["players"][team][i]
+                    fp = FP(team, i, role, (u, v), pc["name"], pc.get("num", i + 1))
+                    fp.rating = pc.get("rating", 70); fp.rmul = 0.9 + (fp.rating - 50) / 250.0      # 50 -> 0.90, 95 -> 1.08
+                else:
+                    fp = FP(team, i, role, (u, v), names.pop() if names else "AI", 1 if role == "GK" else i + 1)
                 self.fps.append(fp)
         # place humans: local on home team as the forward (or midfield); remote friends on home (co-op) or alternate (versus)
-        order = [6, 4, 3, 5, 1, 2]
+        n = len(ar["shapes"][0]) if ar else len(SHAPE)
+        order = [6, 4, 3, 5, 1, 2] if not ar else [n - 1] + [i for i in range(n - 2, 0, -1)]
         home_free = list(order); away_free = list(order)
         def take(team):
             lst = home_free if team == 0 else away_free
-            return self.fps[team * len(SHAPE) + lst.pop(0)] if lst else None
-        f = take(0); f.human = "local"; f.name = g.profile.get("name", "YOU"); self.local = f
-        f.cfg = A.clean(dict(g.profile)); f.number = 10
+            return self.fps[team * n + lst.pop(0)] if lst else None
+        f = take(0); f.human = "local"; self.local = f
+        if not ar: f.name = g.profile.get("name", "YOU"); f.number = 10
+        f.cfg = A.clean(dict(g.profile)); f.cfg["name"] = f.name
         for k, (pid, p) in enumerate(remote):
             team = (k + 1) % 2 if self.versus else 0
             ff = take(team) or take(1 - team)
@@ -373,8 +397,13 @@ class Match:
         self.ball = [CX, CY, BALL_R]; self.bv = [0.0, 0.0, 0.0]
         for f in self.fps:
             u, v = f.home; v = min(v * 0.9, -1.5)
-            if f.team == team and f.role == "FW": u, v = 0.0, -0.4
-            if f.team == team and f.idx == 4: u, v = -4.0, -2.0
+            if self.arena:                      # 11-a-side: the striker in the last slot kicks off, the slot before supports
+                last = len(self.arena["shapes"][f.team]) - 1
+                if f.team == team and f.idx == last: u, v = 0.0, -0.4
+                elif f.team == team and f.idx == last - 1: u, v = -4.0, -2.0
+            else:
+                if f.team == team and f.role == "FW": u, v = 0.0, -0.4
+                if f.team == team and f.idx == 4: u, v = -4.0, -2.0
             f.x, f.y = self.to_world(f.team, u, v); f.vx = f.vy = 0.0
             f.h = 0.0 if f.team == 0 else 180.0; f.stun = 0.0
         self.banner("KICK OFF" if not first else "%s  vs  %s" % (self.clubs[0][0], self.clubs[1][0]), 2.0)
@@ -452,7 +481,7 @@ class Match:
     def _speed(self, f, sprint):
         base = 5.6 if f.role != "GK" else 5.0
         if sprint and f.stamina > 0.05: base = 7.6
-        return base * (1.0 if f.human else 0.97)
+        return base * (1.0 if f.human else 0.97) * getattr(f, "rmul", 1.0)
 
     def _player(self, f, dt):
         f.tackle_cd = max(0.0, f.tackle_cd - dt); f.kick_cd = max(0.0, f.kick_cd - dt); f.kick_t = max(0.0, f.kick_t - dt)
@@ -548,7 +577,7 @@ class Match:
         f.tackle_cd = 1.1
         o = self.owner
         if o is not None and o.team != f.team and math.hypot(o.x - f.x, o.y - f.y) < 2.1:
-            p = 0.55 + (0.2 if f.human else 0.0) - (0.15 if o.human else 0.0)
+            p = 0.55 + (0.2 if f.human else 0.0) - (0.15 if o.human else 0.0) + (getattr(f, "rating", 70) - getattr(o, "rating", 70)) / 200.0
             if random.random() < p:
                 self.owner = f; self.last_touch = f.team; o.stun = 0.7; self.stats["tackles"] += 1
                 self.app.sfx("bump", 0.5) if hasattr(self.app, "sfx") else None
@@ -737,6 +766,9 @@ class Match:
         self.banner("%s  %d - %d   %s" % ("FINAL SCORE" if self.ended_by else "FULL TIME", s[0], s[1], res), 99)
         print("SFC FULLTIME", s, self.goals, self.stats, flush=True)
         self.app.sfx("checkpoint", 0.8) if hasattr(self.app, "sfx") else None
+        if self.arena and self.arena_coins is None and self.arena.get("on_finish"):
+            try: self.arena_coins = self.arena["on_finish"](self)
+            except Exception as e: print("arena reward error", e, flush=True); self.arena_coins = 0
         self._result()
 
     def _separate(self):
@@ -815,13 +847,15 @@ class Match:
         U.text(o, "%s  %d - %d  %s" % (self.clubs[0][0], self.score[0], self.score[1], self.clubs[1][0]), (0, 0.1), 0.042, font=U.FONT_PLAIN)
         sc = ",  ".join("%s %d'" % (w, mn) for (t, w, mn) in self.goals[:8]) or "no goals"
         U.text(o, sc, (0, 0.02), 0.03, fg=(0.85, 0.9, 1, 1), font=U.FONT_PLAIN, wrap=44)
+        if self.arena_coins is not None:
+            U.text(o, "+%s ARENA COINS" % format(self.arena_coins, ","), (0, -0.09), 0.045, fg=(1, 0.84, 0.08, 1), shadow=(0, 0, 0, 1))
         if self.mode == "sim":
             U.button(o, "PLAY AGAIN", (-0.3, -0.25), self.again, w=0.2, h=0.05, scale=0.035, edge=(0.3, 1.0, 0.45, 1))
         U.button(o, "LEAVE STADIUM", (0.3 if self.mode == "sim" else 0, -0.25), self.quit, w=0.2, h=0.05, scale=0.035)
 
     def again(self):
         g = self.g; args = dict(home_club=self.club_idx[0], away_club=self.club_idx[1], minutes_real=self.secs / 60.0,
-                                online=self.online, versus=self.versus, kits=self.kits)
+                                online=self.online, versus=self.versus, kits=self.kits, arena=self.arena)
         self.quit(again=True); g.start_match(**args)
 
     def quit(self, again=False):
