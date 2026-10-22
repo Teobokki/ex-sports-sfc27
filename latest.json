@@ -1,9 +1,9 @@
 {
-  "version": "1.0.0.3",
-  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0.3",
-  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.3/EX-SPORTS-SFC27-Setup-1.0.0.3.exe",
-  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.3/EX-SPORTS-SFC27-Setup-1.0.0.3.exe",
-  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.3/EX-SPORTS-SFC27-1.0.0.3-Windows-x64.zip",
-  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.3/EX-SPORTS-SFC27-Portable.exe",
-  "notes": "New main-menu background: the SFC 27 artwork, cover-scaled with no stretching, with the menu buttons in a right-hand column over a subtle dark gradient. Includes everything from 1.0.0.2: the EX SPORTS intro, SFC 27 ARENA and the EX SPORTS RECORDER. Per-user, no admin."
+  "version": "1.0.0.4",
+  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0.4",
+  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-Setup-1.0.0.4.exe",
+  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-Setup-1.0.0.4.exe",
+  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-1.0.0.4-Windows-x64.zip",
+  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-Portable.exe",
+  "notes": "Player faces in SFC 27 ARENA: every card (starting XI, bench, reserves and pack cards) shows a unique head-and-shoulders portrait of that fictional player in his club's kit, rendered in-engine and cached per user. New PLAYER INFO view with a big portrait, number, position, age, rating, club and stats. Includes everything from 1.0.0.3. Per-user, no admin."
 }
