@@ -1,9 +1,9 @@
 {
-  "version": "1.0.0",
-  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0",
-  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0/EX-SPORTS-SFC27-Setup-1.0.0.exe",
-  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0/EX-SPORTS-SFC27-Setup-1.0.0.exe",
-  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0/EX-SPORTS-SFC27-1.0.0-Windows-x64.zip",
-  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0/EX-SPORTS-SFC27-Portable.exe",
-  "notes": "First release: 7-a-side football at the EX SPORTS SFC 27 stadium. QUICK MATCH vs AI or ONLINE with a join code (no admin, no firewall setup). UNLIMITED match length by default, with END MATCH. Fictional clubs and an all-yellow kit option."
+  "version": "1.0.0.1",
+  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0.1",
+  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-Setup-1.0.0.1.exe",
+  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-Setup-1.0.0.1.exe",
+  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-1.0.0.1-Windows-x64.zip",
+  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-Portable.exe",
+  "notes": "Update fixes: the Setup now starts separately from the game with a clean environment, and portable copies update themselves (no more 'Failed to remove temporary directory (_MEI…)' warning). QUICK MATCH VS AI is now KICK OFF. The copyright reads © 2026 EX SPORTS AND EX INC. Per-user, no admin."
 }
