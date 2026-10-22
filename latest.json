@@ -1,9 +1,9 @@
 {
-  "version": "1.0.0.1",
-  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0.1",
-  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-Setup-1.0.0.1.exe",
-  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-Setup-1.0.0.1.exe",
-  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-1.0.0.1-Windows-x64.zip",
-  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.1/EX-SPORTS-SFC27-Portable.exe",
-  "notes": "Update fixes: the Setup now starts separately from the game with a clean environment, and portable copies update themselves (no more 'Failed to remove temporary directory (_MEI…)' warning). QUICK MATCH VS AI is now KICK OFF. The copyright reads © 2026 EX SPORTS AND EX INC. Per-user, no admin."
+  "version": "1.0.0.2",
+  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0.2",
+  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.2/EX-SPORTS-SFC27-Setup-1.0.0.2.exe",
+  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.2/EX-SPORTS-SFC27-Setup-1.0.0.2.exe",
+  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.2/EX-SPORTS-SFC27-1.0.0.2-Windows-x64.zip",
+  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.2/EX-SPORTS-SFC27-Portable.exe",
+  "notes": "New: a 6 s EX SPORTS intro with voiceover ('EX SPORTS. IT'S IN THE FAME.'). SFC 27 ARENA: pick a team, build your squad of fictional cards, open packs with ARENA COINS (free ADD COINS) and play 11-a-side vs AI. EX SPORTS RECORDER: F9 record, F10 save the last 30 s, YouTube-ready MP4s straight to Downloads, nothing uploaded. Per-user, no admin."
 }
