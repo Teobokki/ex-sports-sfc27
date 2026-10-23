@@ -10,8 +10,16 @@ Get the latest build from the [Releases](https://github.com/Teobokki/ex-sports-s
 
 The game checks for updates itself (menu > CHECK FOR UPDATES), using `latest.json` in this repo.
 
+## 1.0.0.5: mixed men's and women's squads in SFC 27 ARENA
+- Every ARENA team mixes men and women, roughly half and half. This covers the starter squad from your picked team, pack cards, the bench, reserves and AI opponents.
+- Each player's gender is fixed by their player id and never changes.
+- Women have their own faces: varied skin tones, face shapes, eye colours and ages (18 to 36), and hairstyles including ponytails, buns, braids, bobs, short cuts and curls. They have female first names and a women's player model in ARENA matches.
+- Men keep their faces, names and player model.
+- Existing ARENA saves keep every card's stats, rating, position, surname and squad place. Women's cards get a female first name.
+- Cached portraits are re-rendered once, for the new face version. KICK OFF is unchanged.
+
 ## 1.0.0.4: player faces in SFC 27 ARENA
-- Every ARENA card shows a head-and-shoulders portrait of that fictional player in his club's kit colours. This covers the starting XI and bench from your picked team, reserves, and pack cards.
+- Every ARENA card shows a head-and-shoulders portrait of that fictional player in their club's kit colours. This covers the starting XI and bench from your picked team, reserves, and pack cards.
 - Each face is unique and always the same for that player. Faces vary in skin tone, face shape, hair style and colour, facial hair, eye colour and age (18 to 36).
 - Portraits are rendered in the game's own engine, with plain lighting and no glow. They are cached per user in `%APPDATA%\EX SPORTS SFC 27\faces`.
 - PLAYER INFO shows a large portrait with number, position, age, rating, tier, club and stats. Open it by clicking a card on the ARENA hub or in a pack reveal, or by switching on PLAYER INFO in SQUAD.

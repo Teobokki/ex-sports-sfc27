@@ -12,6 +12,7 @@ from xs_mesh import mesh_node, shade
 SKINS = [("PORCELAIN", (0.96, 0.82, 0.72)), ("PEACH", (0.93, 0.74, 0.6)), ("HONEY", (0.85, 0.62, 0.45)), ("OLIVE", (0.74, 0.56, 0.4)),
          ("TAN", (0.66, 0.46, 0.32)), ("BROWN", (0.5, 0.33, 0.22)), ("DEEP", (0.34, 0.22, 0.15)), ("EBONY", (0.24, 0.16, 0.11))]
 HAIRS = ["buzz", "afro", "ponytail", "mohawk", "buns", "curly", "long", "spiky"]
+ARENA_HAIRS = ["bob", "braids", "bun", "pixie"]          # v1.0.0.5: SFC 27 ARENA women players (not in the avatar editor)
 HAIR_COLS = [("BLACK", (0.05, 0.045, 0.045)), ("BROWN", (0.25, 0.15, 0.08)), ("AUBURN", (0.45, 0.16, 0.07)), ("BLONDE", (0.85, 0.7, 0.4)),
              ("SILVER", (0.78, 0.8, 0.82)), ("TEAL", (0.1, 0.6, 0.6)), ("PINK", (0.95, 0.45, 0.65)), ("PURPLE", (0.45, 0.2, 0.7))]
 TOPS = ["hoodie", "jersey", "jacket", "tee", "vest"]
@@ -47,11 +48,12 @@ def clean(cfg):
     for k, n in (("skin", len(SKINS)), ("hair_col", len(HAIR_COLS)), ("top_col", len(COLS)), ("bottom_col", len(COLS))):
         try: out[k] = int(cfg.get(k, p[k])) % n
         except Exception: pass
-    for k, opts in (("hair", HAIRS), ("top", TOPS), ("acc", ACCS)):
+    for k, opts in (("hair", HAIRS + ARENA_HAIRS), ("top", TOPS), ("acc", ACCS)):
         if cfg.get(k) in opts: out[k] = cfg[k]
     try: out["build"] = max(0.88, min(1.08, float(cfg.get("build", 1.0))))
     except Exception: pass
-    for k in ("kit_top", "kit_bottom"):
+    if cfg.get("body") in ("M", "F"): out["body"] = cfg["body"]
+    for k in ("kit_top", "kit_bottom", "skin_rgb", "hair_rgb"):
         v = cfg.get(k)
         if isinstance(v, (list, tuple)) and len(v) == 3: out[k] = tuple(max(0.0, min(1.0, float(x))) for x in v)
     if "number" in cfg:
@@ -138,7 +140,8 @@ class Avatar(Person):
 
     def build_model(self):
         app = self.app; c = self.cfg; s = c.get("build", 1.0)
-        skin = SKINS[c["skin"]][1]; hairc = HAIR_COLS[c["hair_col"]][1]
+        skin = tuple(c.get("skin_rgb") or SKINS[c["skin"]][1]); hairc = tuple(c.get("hair_rgb") or HAIR_COLS[c["hair_col"]][1])
+        fem = c.get("body") == "F"; w = 0.9 if fem else 1.0          # women players: narrower shoulders and arms, same rig
         top = tuple(c.get("kit_top") or COLS[c["top_col"]][1]); bot = tuple(c.get("kit_bottom") or COLS[c["bottom_col"]][1])
         dark = (top[0] * 0.7, top[1] * 0.7, top[2] * 0.7)
         m = NodePath("avatar"); m.reparent_to(self.np); m.set_h(180); self.model = m
@@ -148,9 +151,13 @@ class Avatar(Person):
         # ---- torso (clothes) + neck/head (skin)
         t = Mesh()
         t.lathe([(0.8, 0.02, 0.02), (0.83, 0.12 * s, 0.085), (0.88, 0.16 * s, 0.105), (0.95, 0.168 * s, 0.112), (1.03, 0.158 * s, 0.106)], bot)
-        t.lathe([(0.99, 0.162 * s, 0.11), (1.08, 0.156 * s, 0.106), (1.17, 0.172 * s, 0.116), (1.26, 0.186 * s, 0.12),
-                 (1.33, 0.2 * s, 0.112), (1.375, 0.19 * s, 0.095), (1.405, 0.13 * s, 0.07), (1.425, 0.06, 0.05), (1.43, 0.01, 0.01)], top, 24)
-        for sx in (-1, 1): t.blob((sx * 0.19 * s, 0.0, 1.345), (0.065, 0.07, 0.06), top)               # shoulder caps
+        if fem:
+            t.lathe([(0.99, 0.162 * s, 0.11), (1.08, 0.146 * s, 0.1), (1.17, 0.152 * s, 0.108), (1.26, 0.166 * s, 0.114),
+                     (1.33, 0.178 * s, 0.106), (1.375, 0.168 * s, 0.09), (1.405, 0.115 * s, 0.066), (1.425, 0.054, 0.045), (1.43, 0.01, 0.01)], top, 24)
+        else:
+            t.lathe([(0.99, 0.162 * s, 0.11), (1.08, 0.156 * s, 0.106), (1.17, 0.172 * s, 0.116), (1.26, 0.186 * s, 0.12),
+                     (1.33, 0.2 * s, 0.112), (1.375, 0.19 * s, 0.095), (1.405, 0.13 * s, 0.07), (1.425, 0.06, 0.05), (1.43, 0.01, 0.01)], top, 24)
+        for sx in (-1, 1): t.blob((sx * 0.19 * s * w, 0.0, 1.345), (0.065 * w, 0.07 * w, 0.06), top)   # shoulder caps
         if c["top"] == "hoodie":
             t.blob((0, 0.085, 1.43), (0.12, 0.06, 0.07), dark)                                         # hood at the back
             t.blob((0, -0.115, 1.12), (0.11, 0.025, 0.06), dark)                                       # front pocket
@@ -165,9 +172,13 @@ class Avatar(Person):
             for sx in (-1, 1): t.tube((sx * 0.1, -0.1, 1.38), (sx * 0.06, -0.12, 1.2), 0.03, 0.02, dark)
         tor = _put(m, "tank", t, app, 0.12, 0.6)
         h = Mesh()
-        h.tube((0, 0.0, 1.38), (0, -0.005, 1.5), 0.05, 0.048, skin)                                   # neck
-        h.blob((0, -0.008, 1.62), (0.092, 0.105, 0.118), skin, 18, 12)                                 # head
-        h.blob((0, -0.03, 1.55), (0.072, 0.08, 0.055), skin)                                           # jaw / chin
+        h.tube((0, 0.0, 1.38), (0, -0.005, 1.5), 0.05 * w * 0.95 if fem else 0.05, 0.048 * w if fem else 0.048, skin)   # neck
+        if fem:
+            h.blob((0, -0.008, 1.62), (0.088, 0.101, 0.114), skin, 18, 12)                             # head
+            h.blob((0, -0.03, 1.556), (0.063, 0.072, 0.05), skin)                                      # softer jaw / chin
+        else:
+            h.blob((0, -0.008, 1.62), (0.092, 0.105, 0.118), skin, 18, 12)                             # head
+            h.blob((0, -0.03, 1.55), (0.072, 0.08, 0.055), skin)                                       # jaw / chin
         for sx in (-1, 1): h.blob((sx * 0.092, 0.0, 1.615), (0.014, 0.022, 0.03), skin)                # ears
         h.blob((0, -0.106, 1.6), (0.013, 0.016, 0.024), skin)                                           # nose
         sk = _put(m, "skin", h, app, 0.2, 0.75)
@@ -177,7 +188,7 @@ class Avatar(Person):
             f.blob((sx * 0.036, -0.103, 1.638), (0.0095, 0.006, 0.0095), (0.18, 0.12, 0.08))          # iris
             f.blob((sx * 0.036, -0.108, 1.638), (0.0045, 0.003, 0.0045), (0.02, 0.02, 0.02))          # pupil
             f.tube((sx * 0.018, -0.1, 1.665), (sx * 0.056, -0.094, 1.668), 0.0045, 0.004, (hairc[0] * 0.8, hairc[1] * 0.8, hairc[2] * 0.8), 6)   # brows
-        f.blob((0, -0.1, 1.556), (0.022, 0.006, 0.0055), (0.62, 0.3, 0.29), 10, 6)   # lips
+        f.blob((0, -0.1, 1.556), (0.022, 0.006, 0.0055) if not fem else (0.021, 0.0065, 0.0068), (0.62, 0.3, 0.29) if not fem else (0.66, 0.32, 0.33), 10, 6)   # lips
         _put(m, "eyes", f, app, 0.6, 0.0)
         # ---- hair
         hr = Mesh(); st = c["hair"]
@@ -202,6 +213,19 @@ class Avatar(Person):
         elif st == "long":
             cap(); hr.blob((0, 0.06, 1.5), (0.1, 0.06, 0.17), hairc)
             for sx in (-1, 1): hr.blob((sx * 0.085, -0.02, 1.53), (0.025, 0.05, 0.12), hairc)
+        elif st == "bob":
+            cap(); hr.blob((0, 0.04, 1.6), (0.108, 0.085, 0.085), hairc)
+            for sx in (-1, 1): hr.blob((sx * 0.088, -0.03, 1.585), (0.03, 0.06, 0.07), hairc)
+        elif st == "braids":
+            cap()
+            for sx in (-1, 1):
+                for k in range(7):
+                    tt = k / 6.0
+                    hr.blob((sx * (0.085 + 0.03 * tt), 0.01 - 0.06 * tt, 1.6 - 0.2 * tt), (0.022, 0.022, 0.026), hairc, 8, 6)
+        elif st == "bun":
+            cap(); hr.blob((0, 0.075, 1.735), (0.05, 0.048, 0.045), hairc)
+        elif st == "pixie":
+            hr.blob((0, 0.008, 1.65), (0.098, 0.11, 0.1), hairc); hr.blob((0.02, -0.08, 1.7), (0.06, 0.04, 0.03), hairc)
         elif st == "spiky":
             hr.blob((0, 0.01, 1.65), (0.098, 0.11, 0.095), hairc)
             for k in range(9):
@@ -221,14 +245,14 @@ class Avatar(Person):
         hn = _put(m, "hair", hr, app, 0.3, 0.3)
         # ---- arms (rig: armX -> foreX -> handX with fingersX / fistX)
         for sd, sx in (("L", 1), ("R", -1)):
-            arm = m.attach_new_node("arm" + sd); arm.set_pos(sx * 0.2 * s, 0.0, 1.355)
+            arm = m.attach_new_node("arm" + sd); arm.set_pos(sx * 0.2 * s * w, 0.0, 1.355)
             a = Mesh()
-            a.tube((0, 0, 0), (0, 0, -0.27), 0.055, 0.046, top if long_sleeve or c["top"] != "vest" else skin)
+            a.tube((0, 0, 0), (0, 0, -0.27), 0.055 * w, 0.046 * w, top if long_sleeve or c["top"] != "vest" else skin)
             if not long_sleeve and c["top"] != "vest":
-                a.tube((0, 0, -0.14), (0, 0, -0.27), 0.046, 0.044, skin)
+                a.tube((0, 0, -0.14), (0, 0, -0.27), 0.046 * w, 0.044 * w, skin)
             _put(arm, "skin" if not long_sleeve else "sleeve" + sd, a, app, 0.15, 0.6)
             fo = arm.attach_new_node("fore" + sd); fo.set_pos(0, 0, -0.27)
-            b = Mesh(); b.tube((0, 0, 0), (0, 0, -0.25), 0.043, 0.034, top if long_sleeve else skin)
+            b = Mesh(); b.tube((0, 0, 0), (0, 0, -0.25), 0.043 * w, 0.034 * w, top if long_sleeve else skin)
             if long_sleeve: b.tube((0, 0, -0.21), (0, 0, -0.25), 0.036, 0.034, dark)
             _put(fo, "forearm", b, app, 0.15, 0.6)
             hd = fo.attach_new_node("hand" + sd); hd.set_pos(0, 0, -0.26)
@@ -245,8 +269,9 @@ class Avatar(Person):
             if kit:
                 sock = tuple(c.get("kit_socks") or bot)
                 l.tube((0, 0, 0), (0, 0, -0.27), 0.08 * s, 0.07, bot)                  # shorts
-                l.tube((0, 0, -0.2), (0, 0, -0.45), 0.066, 0.056, skin)                # knee
-                l.tube((0, 0, -0.45), (0, 0.0, -0.86), 0.058, 0.046, sock)             # socks
+                lw = 0.94 if fem else 1.0
+                l.tube((0, 0, -0.2), (0, 0, -0.45), 0.066 * lw, 0.056 * lw, skin)      # knee
+                l.tube((0, 0, -0.45), (0, 0.0, -0.86), 0.058 * lw, 0.046 * lw, sock)   # socks
                 l.tube((0, 0, -0.47), (0, 0, -0.5), 0.06, 0.06, (1, 1, 1))             # sock band
                 shoe = (0.08, 0.08, 0.1)
             else:

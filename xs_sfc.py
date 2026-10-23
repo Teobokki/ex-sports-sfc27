@@ -335,6 +335,7 @@ class Match:
                     pc = ar["players"][team][i]
                     fp = FP(team, i, role, (u, v), pc["name"], pc.get("num", i + 1))
                     fp.rating = pc.get("rating", 70); fp.rmul = 0.9 + (fp.rating - 50) / 250.0      # 50 -> 0.90, 95 -> 1.08
+                    if pc.get("cfg"): fp.cfg = A.clean(pc["cfg"]); fp.cfg["name"] = fp.name               # v1.0.0.5: the card's look (man or woman)
                 else:
                     fp = FP(team, i, role, (u, v), names.pop() if names else "AI", 1 if role == "GK" else i + 1)
                 self.fps.append(fp)
@@ -347,7 +348,7 @@ class Match:
             return self.fps[team * n + lst.pop(0)] if lst else None
         f = take(0); f.human = "local"; self.local = f
         if not ar: f.name = g.profile.get("name", "YOU"); f.number = 10
-        f.cfg = A.clean(dict(g.profile)); f.cfg["name"] = f.name
+        if not (ar and hasattr(f, "cfg")): f.cfg = A.clean(dict(g.profile)); f.cfg["name"] = f.name
         for k, (pid, p) in enumerate(remote):
             team = (k + 1) % 2 if self.versus else 0
             ff = take(team) or take(1 - team)

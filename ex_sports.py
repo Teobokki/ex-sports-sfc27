@@ -5,7 +5,7 @@ import os, sys, json, time, math, random, threading, tempfile, urllib.request, s
 APP_NAME = "EX SPORTS SFC 27"
 APP_TITLE = "EX SPORTS\u2122 SFC 27"
 EDITION = "STANDARD EDITION"
-APP_VERSION = "1.0.0.4"
+APP_VERSION = "1.0.0.5"
 REPO = "Teobokki/ex-sports-sfc27"
 UPDATE_URL = "https://raw.githubusercontent.com/%s/main/latest.json" % REPO
 RELEASES_URL = "https://github.com/%s/releases/latest" % REPO
@@ -820,7 +820,7 @@ class App(ShowBase):
             c0 = ar.d["coins"]; cards = ar.open_and_show(2); ast["n"] = len(ar.d["cards"])
             L("GOLD PACK opened: screen", self.screen, "coins", c0, "->", ar.d["coins"], "cards", [(c["name"], c["pos"], c["rating"], c["tier"]) for c in cards])
             ar.open_pack(3); L("ELITE PACK", [(c["name"], c["rating"], c["tier"]) for c in ar.last_pack], "total cards", len(ar.d["cards"]))
-            fb = ar.faces; import xs_faces as XF
+            fb = ar.faces; import xs_faces as XF, xs_arena as XF_A
             shown = [ar.card(i) for i in ar.d["xi"] + ar.d["bench"]] + cards; fb.ensure(shown)
             keys = [fb.key(c, fb.kit_of(c)) for c in shown]; ok = [os.path.exists(fb.path(k)) for k in keys]
             tex = fb.texture(cards[-1]); looks = [XF.look_for(c) for c in shown]
@@ -828,6 +828,15 @@ class App(ShowBase):
               "texture", tex is not None and (tex.get_x_size(), tex.get_y_size()), "deterministic", XF.look_for(cards[0]) == XF.look_for(dict(cards[0])),
               "skin tones", len(set(l["skin"] for l in looks)), "hair styles", len(set(l["style"] for l in looks)), "beards", len(set(l["beard"] for l in looks)),
               "ages", min(l["age"] for l in looks), "-", max(l["age"] for l in looks))
+            allp = shown + ar.last_pack; fb.ensure(ar.last_pack); pk = cards + ar.last_pack
+            fem = [c for c in allp if c.get("g") == "F"]; men = [c for c in allp if c.get("g") == "M"]
+            L("MIXED: squad F/M", sum(c.get("g") == "F" for c in shown[:18]), "/", sum(c.get("g") == "M" for c in shown[:18]),
+              "packs F/M", sum(c.get("g") == "F" for c in pk), "/", sum(c.get("g") == "M" for c in pk),
+              "women names ok", all(c["name"].split(" ")[0] in XF_A.FEMALE_FIRST for c in fem), "women beards", sorted(set(XF.look_for(c)["beard"] for c in fem)),
+              "women ages", fem and (min(XF.look_for(c)["age"] for c in fem), max(XF.look_for(c)["age"] for c in fem)),
+              "women styles", sorted(set(XF.look_for(c)["style"] for c in fem)), "men styles", len(set(XF.look_for(c)["style"] for c in men)),
+              "unique faces", len(set(fb.key(c, fb.kit_of(c)) for c in allp)), "/", len(allp),
+              "portrait files", sum(os.path.exists(fb.path(fb.key(c, fb.kit_of(c)))) for c in allp), "gender stable", all(XF.gender_of(c["id"]) == c["g"] for c in allp))
             ar.show_player(cards[-1]); L("PLAYER INFO overlay", ar.overlay is not None, cards[-1]["name"]); ar.close_overlay()
         def a_change():
             n0, c0 = len(ar.d["cards"]), ar.d["coins"]; ar.show_pick(mode="change"); L("CHANGE TEAM screen", self.screen)
@@ -838,6 +847,9 @@ class App(ShowBase):
             st = ar.play_match(autoplay=True); m = g.match
             L("ARENA match started", m is not None, "players", len(m.fps), "clubs", m.clubs[0][0], "vs", m.clubs[1][0], "kit", m.clubs[0][2],
               "opp rating", st["opp_rating"], "home XI", [f.name for f in m.fps if f.team == 0])
+            bod = [(f.team, (f.person.cfg or {}).get("body")) for f in m.fps if hasattr(f.person, "cfg")]
+            L("ARENA bodies: home F/M", sum(1 for t, b in bod if t == 0 and b == "F"), "/", sum(1 for t, b in bod if t == 0 and b == "M"),
+              "away F/M", sum(1 for t, b in bod if t == 1 and b == "F"), "/", sum(1 for t, b in bod if t == 1 and b == "M"))
         def a_end():
             m = g.match; L("ARENA after play: clock", m.clock_text(), "score", m.score); c0 = ar.d["coins"]; m.end_match()
             L("ARENA END MATCH: reward", m.arena_coins, "coins", c0, "->", ar.d["coins"], "played", ar.d["played"]); m.quit()

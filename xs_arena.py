@@ -5,9 +5,9 @@
   * squad: 11-a-side FORMATION, starting XI, captain, bench (subs), reserves and kit (HOME / AWAY / YELLOW)
   * packs bought with ARENA COINS earned by playing; ADD COINS tops them up for free. No real money, nothing to buy.
   * ARENA matches vs AI clubs on the SFC 27 pitch with your squad; coins on finish
-  * v1.0.0.4: every card shows a portrait of that fictional player in his club's kit (xs_faces: rendered in-engine, cached)
+  * v1.0.0.4: every card shows a portrait of that fictional player in their club's kit (xs_faces: rendered in-engine, cached)
 Saved per user in %APPDATA%\\EX SPORTS SFC 27\\arena.json (no admin)."""
-import os, json, random, time
+import os, json, random, time, zlib
 from panda3d.core import TextNode, TransparencyAttrib
 from direct.gui.DirectGui import DirectFrame, DGG
 import xs_ui as U
@@ -36,7 +36,29 @@ LAST = ["AOKI", "KIRISHIMA", "NAKAHARA", "SHIRAKAWA", "TAKEDA", "MORIYAMA", "HOS
         "VALDEN", "MERINO", "KASTOV", "LINDHOLT", "DORREN", "SALVETTI", "OYELARAN", "BRANKOVIC", "QUILLER", "MARVANE", "TESSARO",
         "HALVIK", "RENWICK", "DUVALLE", "CORRADI", "ISHIGURO", "VANTERMOL", "KORVEN", "ASHBRIDGE", "MIRANTE", "SOLBERG", "TAKASAGO",
         "NERIMA", "OKUBO", "YAMASAKI", "PELLARO", "DRAVEN", "HOLLOWAY", "STRANDE"]
+FEMALE_FIRST = ["AIKO", "HANA", "YUNA", "MIO", "SAKURA", "RIN", "AOI", "NANAMI", "MEI", "KAEDE", "EMI", "NOA", "LUNA", "MARA",
+                "NINA", "ELENA", "SOFIA", "INES", "LIV", "FREJA", "ASTRID", "CLARA", "MAYA", "AMARA", "ZURI", "NIA", "ADA", "IRIS",
+                "LENA", "VERA", "ZOE", "ALBA", "KIRA", "TALIA", "NORA", "SELMA", "ESME", "ROSA", "YARA", "SIENNA"]
 ROLES = ("GK", "DF", "MF", "FW")
+
+
+def set_gender(c):
+    """v1.0.0.5: mixed squads. Gender is fixed by the card id; women get a female first name (stats, position and surname unchanged)"""
+    c["g"] = xs_faces.gender_of(c["id"])
+    first, _, last = c["name"].partition(" ")
+    if c["g"] == "F" and first not in FEMALE_FIRST:
+        c["name"] = "%s %s" % (FEMALE_FIRST[zlib.crc32(("n|%s" % c["id"]).encode()) % len(FEMALE_FIRST)], last)
+    return c
+
+
+def avatar_cfg(c):
+    """the match body for a card: woman or man, with the portrait's skin tone, hair colour and a matching hairstyle"""
+    L = xs_faces.look_for(c); fem = L.get("g") == "F"
+    if fem: hair = {"ponytail": "ponytail", "bun": "bun", "braids": "braids", "bob": "bob", "pixie": "pixie", "curls": "curly",
+                    "long": "long", "afro": "afro", "locs": "long"}.get(L["style"], "ponytail")
+    else: hair = {"afro": "afro", "curlytop": "curly", "locs": "curly"}.get(L["style"], "buzz")
+    return {"body": "F" if fem else "M", "hair": hair, "skin_rgb": tuple(float(v) for v in L["skin"]),
+            "hair_rgb": tuple(float(v) for v in L["hair"]), "build": 0.94 if fem else 1.0, "acc": "none", "top": "jersey"}
 SQUAD_SHAPE = ["GK"] + ["DF"] * 4 + ["MF"] * 4 + ["FW"] * 2 + ["GK", "DF", "DF", "MF", "MF", "FW", "FW"]   # 11 + 7 subs
 
 
@@ -56,8 +78,9 @@ def make_card(rng, cid, pos, rating, club):
     else:
         b = {"DF": (-6, -14, -4, 6), "MF": (-2, -4, 6, -4), "FW": (5, 6, -3, -18)}[pos]
         stats = dict(zip(("PAC", "SHO", "PAS", "DEF"), (st(b[0]), st(b[1]), st(b[2]), st(b[3]))))
-    return {"id": cid, "name": "%s %s" % (rng.choice(FIRST), rng.choice(LAST)), "pos": pos, "rating": int(rating),
+    card = {"id": cid, "name": "%s %s" % (rng.choice(FIRST), rng.choice(LAST)), "pos": pos, "rating": int(rating),
             "tier": tier_of(rating), "club": club, "stats": stats, "num": rng.randint(2, 30) if pos != "GK" else 1}
+    return set_gender(card)
 
 
 def club_roster(club_idx, start_id):
@@ -86,7 +109,11 @@ class Arena:
     def _load(self):
         try:
             d = json.load(open(self.path, encoding="utf-8"))
-            if d.get("club") is not None and d.get("cards"): return d
+            if d.get("club") is not None and d.get("cards"):
+                if any("g" not in c for c in d["cards"]):          # v1.0.0.5 migration: add genders, keep stats and positions
+                    for c in d["cards"]: set_gender(c)
+                    self.d = d; self.save()
+                return d
         except Exception: pass
         return None
 
@@ -207,8 +234,8 @@ class Arena:
     def opponent(self):
         """an AI club near your team rating (never your own base club)"""
         rng = random.Random(); others = [i for i in range(len(F.CLUBS)) if i != self.d["club"]]; oi = rng.choice(others)
-        cards = club_roster(oi, 0); tr = self.team_rating(); shift = (tr + rng.randint(-4, 3)) - sum(c["rating"] for c in cards[:11]) / 11.0
-        players = [{"name": c["name"], "num": c["num"], "rating": int(c["rating"] + shift)} for c in cards[:11]]
+        cards = club_roster(oi, 100000 + oi * 100); tr = self.team_rating(); shift = (tr + rng.randint(-4, 3)) - sum(c["rating"] for c in cards[:11]) / 11.0
+        players = [{"name": c["name"], "num": c["num"], "rating": int(c["rating"] + shift), "g": c["g"], "cfg": avatar_cfg(c)} for c in cards[:11]]
         return oi, players, int(sum(p["rating"] for p in players) / 11)
 
     def match_setup(self):
@@ -216,7 +243,7 @@ class Arena:
         mine = []
         for k, cid in enumerate(d["xi"]):
             c = self.card(cid); nm = c["name"] + (" (C)" if cid == d.get("captain") else "")
-            mine.append({"name": nm, "num": c["num"], "rating": self.player_rating(k)})
+            mine.append({"name": nm, "num": c["num"], "rating": self.player_rating(k), "g": c.get("g") or xs_faces.gender_of(c), "cfg": avatar_cfg(c)})
         oc = F.CLUBS[oi]
         return {"clubs": [self.club_tuple(), tuple(oc[:4])], "shapes": [shape, F.FORMATIONS[random.choice(list(F.FORMATIONS))]],
                 "players": [mine, opp], "on_finish": self.reward, "opp_rating": orat}
@@ -418,8 +445,8 @@ class Arena:
         if pages > 1:
             U.button(o, "<", (0.55, -0.48), lambda: (setattr(self, "res_page", max(0, self.res_page - 1)), self.show_squad()), w=0.04, h=0.03, scale=0.03)
             U.button(o, ">", (1.35, -0.48), lambda: (setattr(self, "res_page", min(pages - 1, self.res_page + 1)), self.show_squad()), w=0.04, h=0.03, scale=0.03)
-        hint = ("Click a starter to make him captain." if self.cap_mode else "Click any player to see his PLAYER INFO." if self.info_mode else
-                "Click a player, then another place (starter, sub or reserve) to swap them." if self.sel is None else "Now click where he should go.")
+        hint = ("Click a starter to make them captain." if self.cap_mode else "Click any player to see their PLAYER INFO." if self.info_mode else
+                "Click a player, then another place (starter, sub or reserve) to swap them." if self.sel is None else "Now click where they should go.")
         U.text(o, hint, (0.95, -0.58), 0.024, fg=(1, 0.9, 0.5, 1), font=U.FONT_PLAIN)
         U.button(o, "DONE", (0.95, -0.72), self.show_hub, w=0.2, h=0.04, scale=0.034, hint="Esc")
 
