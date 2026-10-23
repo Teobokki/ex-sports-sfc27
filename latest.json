@@ -1,9 +1,9 @@
 {
-  "version": "1.0.0.4",
-  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0.4",
-  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-Setup-1.0.0.4.exe",
-  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-Setup-1.0.0.4.exe",
-  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-1.0.0.4-Windows-x64.zip",
-  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.4/EX-SPORTS-SFC27-Portable.exe",
-  "notes": "Player faces in SFC 27 ARENA: every card (starting XI, bench, reserves and pack cards) shows a unique head-and-shoulders portrait of that fictional player in his club's kit, rendered in-engine and cached per user. New PLAYER INFO view with a big portrait, number, position, age, rating, club and stats. Includes everything from 1.0.0.3. Per-user, no admin."
+  "version": "1.0.0.5",
+  "release_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/tag/v1.0.0.5",
+  "url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.5/EX-SPORTS-SFC27-Setup-1.0.0.5.exe",
+  "installer_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.5/EX-SPORTS-SFC27-Setup-1.0.0.5.exe",
+  "full_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.5/EX-SPORTS-SFC27-1.0.0.5-Windows-x64.zip",
+  "portable_url": "https://github.com/Teobokki/ex-sports-sfc27/releases/download/v1.0.0.5/EX-SPORTS-SFC27-Portable.exe",
+  "notes": "Mixed squads in SFC 27 ARENA: every team (your starter squad, bench, reserves, pack cards and AI opponents) now mixes men and women, roughly half and half, with each player's gender fixed by their player id. Women have their own faces (varied skin tones, face shapes and hairstyles such as ponytails, buns, braids, bobs, short cuts and curls), female first names and a women's player model in ARENA matches. Existing saves keep all stats and positions. KICK OFF is unchanged. Per-user, no admin."
 }
